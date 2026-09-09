@@ -1,0 +1,396 @@
+diff --git a/libavcodec/h264_cabac.c b/libavcodec/h264_cabac.c
+index bd9c5bb..4a373ce 100644
+--- a/libavcodec/h264_cabac.c
++++ b/libavcodec/h264_cabac.c
+@@ -1600,6 +1600,28 @@ static av_always_inline int get_cabac_cbf_ctx(H264SliceContext *sl,
+     return base_ctx[cat] + ctx;
+ }
+ 
++static const int significant_coeff_flag_offset[2][14] = {
++  { 105+0, 105+15, 105+29, 105+44, 105+47, 402, 484+0, 484+15, 484+29, 660, 528+0, 528+15, 528+29, 718 },
++  { 277+0, 277+15, 277+29, 277+44, 277+47, 436, 776+0, 776+15, 776+29, 675, 820+0, 820+15, 820+29, 733 }
++};
++static const int last_coeff_flag_offset[2][14] = {
++  { 166+0, 166+15, 166+29, 166+44, 166+47, 417, 572+0, 572+15, 572+29, 690, 616+0, 616+15, 616+29, 748 },
++  { 338+0, 338+15, 338+29, 338+44, 338+47, 451, 864+0, 864+15, 864+29, 699, 908+0, 908+15, 908+29, 757 }
++};
++static const int coeff_abs_level_m1_offset[14] = {
++    227+0, 227+10, 227+20, 227+30, 227+39, 426, 952+0, 952+10, 952+20, 708, 982+0, 982+10, 982+20, 766
++};
++static const uint8_t significant_coeff_flag_offset_8x8[2][63] = {
++  { 0, 1, 2, 3, 4, 5, 5, 4, 4, 3, 3, 4, 4, 4, 5, 5,
++    4, 4, 4, 4, 3, 3, 6, 7, 7, 7, 8, 9,10, 9, 8, 7,
++    7, 6,11,12,13,11, 6, 7, 8, 9,14,10, 9, 8, 6,11,
++   12,13,11, 6, 9,14,10, 9,11,12,13,11,14,10,12 },
++  { 0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 7, 7, 8, 4, 5,
++    6, 9,10,10, 8,11,12,11, 9, 9,10,10, 8,11,12,11,
++    9, 9,10,10, 8,11,12,11, 9, 9,10,10, 8,13,13, 9,
++    9,10,10, 8,13,13, 9, 9,10,10,14,14,14,14,14 }
++};
++
+ static av_always_inline void
+ decode_cabac_residual_internal(const H264Context *h, H264SliceContext *sl,
+                                int16_t *block,
+@@ -1607,27 +1629,6 @@ decode_cabac_residual_internal(const H264Context *h, H264SliceContext *sl,
+                                const uint32_t *qmul, int max_coeff,
+                                int is_dc, int chroma422)
+ {
+-    static const int significant_coeff_flag_offset[2][14] = {
+-      { 105+0, 105+15, 105+29, 105+44, 105+47, 402, 484+0, 484+15, 484+29, 660, 528+0, 528+15, 528+29, 718 },
+-      { 277+0, 277+15, 277+29, 277+44, 277+47, 436, 776+0, 776+15, 776+29, 675, 820+0, 820+15, 820+29, 733 }
+-    };
+-    static const int last_coeff_flag_offset[2][14] = {
+-      { 166+0, 166+15, 166+29, 166+44, 166+47, 417, 572+0, 572+15, 572+29, 690, 616+0, 616+15, 616+29, 748 },
+-      { 338+0, 338+15, 338+29, 338+44, 338+47, 451, 864+0, 864+15, 864+29, 699, 908+0, 908+15, 908+29, 757 }
+-    };
+-    static const int coeff_abs_level_m1_offset[14] = {
+-        227+0, 227+10, 227+20, 227+30, 227+39, 426, 952+0, 952+10, 952+20, 708, 982+0, 982+10, 982+20, 766
+-    };
+-    static const uint8_t significant_coeff_flag_offset_8x8[2][63] = {
+-      { 0, 1, 2, 3, 4, 5, 5, 4, 4, 3, 3, 4, 4, 4, 5, 5,
+-        4, 4, 4, 4, 3, 3, 6, 7, 7, 7, 8, 9,10, 9, 8, 7,
+-        7, 6,11,12,13,11, 6, 7, 8, 9,14,10, 9, 8, 6,11,
+-       12,13,11, 6, 9,14,10, 9,11,12,13,11,14,10,12 },
+-      { 0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 7, 7, 8, 4, 5,
+-        6, 9,10,10, 8,11,12,11, 9, 9,10,10, 8,11,12,11,
+-        9, 9,10,10, 8,11,12,11, 9, 9,10,10, 8,13,13, 9,
+-        9,10,10, 8,13,13, 9, 9,10,10,14,14,14,14,14 }
+-    };
+     static const uint8_t sig_coeff_offset_dc[7] = { 0, 0, 1, 1, 2, 2, 2 };
+     /* node ctx: 0..3: abslevel1 (with abslevelgt1 == 0).
+      * 4..7: abslevelgt1 + 3 (and abslevel1 doesn't matter).
+@@ -1903,6 +1904,28 @@ static av_always_inline void decode_cabac_luma_residual(const H264Context *h, H2
+     const uint32_t *qmul;
+     int i8x8, i4x4;
+     int qscale = p == 0 ? sl->qscale : sl->chroma_qp[p - 1];
++    if (p == 0 && !pixel_shift && !IS_INTRA16x16(mb_type) &&
++        h->h264dsp.decode_luma_residual[0]) {
++        const int dct8 = !!IS_8x8DCT(mb_type);
++        const int cat = dct8 ? 5 : 2;
++        const int cqm = IS_INTRA(mb_type) ? 0 : 3;
++        const int field = MB_FIELD(sl);
++        if (!(cbp & 15)) {
++            fill_rectangle(sl->non_zero_count_cache + scan8[0], 4, 4, 8, 0, 1);
++            return;
++        }
++        h->h264dsp.decode_luma_residual[dct8](
++            &sl->cabac, sl->mb, dct8 ? scan8x8 : scan,
++            dct8 ? h->ps.pps->dequant8_coeff[cqm][qscale]
++                 : h->ps.pps->dequant4_coeff[cqm][qscale],
++            sl->cabac_state + significant_coeff_flag_offset[field][cat],
++            sl->cabac_state + last_coeff_flag_offset[field][cat],
++            sl->cabac_state + coeff_abs_level_m1_offset[cat], cbp,
++            dct8 ? significant_coeff_flag_offset_8x8[field]
++                 : sl->cabac_state + 93,
++            sl->non_zero_count_cache + scan8[0]);
++        return;
++    }
+     if( IS_INTRA16x16( mb_type ) ) {
+         AV_ZERO128(sl->mb_luma_dc[p]+0);
+         AV_ZERO128(sl->mb_luma_dc[p]+8);
+diff --git a/libavcodec/h264dsp.h b/libavcodec/h264dsp.h
+index e2fd5ae..43a99da 100644
+--- a/libavcodec/h264dsp.h
++++ b/libavcodec/h264dsp.h
+@@ -122,6 +122,13 @@ typedef struct H264DSPContext {
+     /* out = { x, y, min(abs(x),70), min(abs(y),70) }; -1 on overflow. */
+     int (*decode_mvd_pair)(struct CABACContext *c, uint8_t *state,
+                            int amvd_x, int amvd_y, int out[4]);
++    /* All luma blocks of a non-Intra16 macroblock; index selects 4x4/8x8.
++     * offsets is the 8x8 significance map or the 4x4 coded-block states.
++     * nnz points at the top-left luma entry in the stride-8 NNZ cache. */
++    void (*decode_luma_residual[2])(struct CABACContext *c, int16_t *block,
++                           const uint8_t *scan, const uint32_t *qmul,
++                           uint8_t *significant, uint8_t *last, uint8_t *level,
++                           int cbp, const uint8_t *offsets, uint8_t *nnz);
+     int (*decode_residual)(struct CABACContext *c, int16_t *block,
+                            const uint8_t *scantable, const uint32_t *qmul,
+                            uint8_t *significant, uint8_t *last, uint8_t *level,
+diff --git a/libavcodec/tests/h264_cabac.c b/libavcodec/tests/h264_cabac.c
+index 1e1d257..cd90a04 100644
+--- a/libavcodec/tests/h264_cabac.c
++++ b/libavcodec/tests/h264_cabac.c
+@@ -127,7 +127,7 @@ int main(void)
+     AVLFG rng;
+     ff_h264dsp_init(&dsp, 8, 1);
+ #if ARCH_X86_64 && HAVE_X86ASM
+-    if ((av_get_cpu_flags() & AV_CPU_FLAG_BMI2) && (!dsp.decode_residual || !dsp.decode_mvd_pair || !dsp.decode_cbp)) {
++    if ((av_get_cpu_flags() & AV_CPU_FLAG_BMI2) && (!dsp.decode_residual || !dsp.decode_mvd_pair || !dsp.decode_cbp || !dsp.decode_luma_residual[0] || !dsp.decode_luma_residual[1])) {
+         fprintf(stderr, "H.264 CABAC BMI2 dispatch was not installed\n");
+         return 1;
+     }
+@@ -142,7 +142,7 @@ int main(void)
+             if (depth == 8 && chroma == 1)
+                 continue;
+             ff_h264dsp_init(&other, depth, chroma);
+-            if (other.decode_residual || other.decode_mvd_pair || other.decode_cbp) {
++            if (other.decode_residual || other.decode_mvd_pair || other.decode_cbp || other.decode_luma_residual[0] || other.decode_luma_residual[1]) {
+                 fprintf(stderr, "Unexpected CABAC dispatch for depth %d chroma %d\n",
+                         depth, chroma);
+                 return 1;
+@@ -291,6 +291,83 @@ int main(void)
+             return 1;
+         }
+     }
++    /* Compare whole luma macroblocks to the independent arithmetic reader.
++     * Include every CBP mask, both transforms, random scan permutations,
++     * evolving neighbor contexts, untouched coefficients and NNZ sentinels. */
++    for (int test = 0; test < 4000; test++) {
++        static const uint8_t cache_pos[16] = {
++            12, 13, 20, 21, 14, 15, 22, 23,
++            28, 29, 36, 37, 30, 31, 38, 39
++        };
++        CABACContext ref, opt;
++        uint8_t state0[142], state1[142], nnz0[64], nnz1[64];
++        uint8_t scan[64], offsets[63];
++        uint32_t qmul[64];
++        int16_t block0[256], block1[256];
++        const int dct8 = test & 1, cbp = (test >> 1) & 15;
++        const int size = dct8 ? 64 : 16;
++        for (int i = 0; i < sizeof(data); i++)
++            data[i] = test % 5 == 0 ? 0 : test % 5 == 1 ? 255 : av_lfg_get(&rng);
++        data[0] &= 127;
++        for (int i = 0; i < sizeof(state0); i++)
++            state0[i] = state1[i] = av_lfg_get(&rng) & 127;
++        for (int i = 0; i < 64; i++) {
++            nnz0[i] = nnz1[i] = (av_lfg_get(&rng) & 1) ? 64 : 0;
++            qmul[i] = av_lfg_get(&rng);
++            scan[i] = i;
++            if (i < 63)
++                offsets[i] = av_lfg_get(&rng) % 15;
++        }
++        for (int i = 0; i < 256; i++)
++            block0[i] = block1[i] = av_lfg_get(&rng);
++        for (int i = size - 1; i > 0; i--) {
++            int j = av_lfg_get(&rng) % (i + 1);
++            FFSWAP(uint8_t, scan[i], scan[j]);
++        }
++        if (ff_init_cabac_decoder(&ref, data, sizeof(data)) < 0)
++            return 1;
++        opt = ref;
++        for (int b = 0; b < 256 / size; b++) {
++            const int pos = cache_pos[dct8 ? 4 * b : b];
++            int index[64], count = 0;
++            int coded = cbp & (1 << (dct8 ? b : b / 4));
++            if (coded && !dct8)
++                coded = reference_bin(&ref, state0 + 138 +
++                                      (nnz0[pos - 1] > 0) + 2 * (nnz0[pos - 8] > 0));
++            if (coded) {
++                for (int k = 0; ; k++) {
++                    if (k == size - 1) {
++                        index[count++] = k;
++                        break;
++                    }
++                    if (reference_bin(&ref, state0 + (dct8 ? offsets[k] : k))) {
++                        index[count++] = k;
++                        if (reference_bin(&ref, state0 + 64 +
++                                          (dct8 ? ff_h264_last_coeff_flag_offset_8x8[k] : k)))
++                            break;
++                    }
++                }
++                residual_values(&ref, block0 + b * size, scan, qmul,
++                                index, count, state0 + 128);
++            }
++            nnz0[pos] = count;
++            if (dct8)
++                nnz0[pos + 1] = nnz0[pos + 8] = nnz0[pos + 9] = count;
++        }
++        dsp.decode_luma_residual[dct8](&opt, block1, scan, qmul,
++                                      state1, state1 + 64, state1 + 128, cbp,
++                                      dct8 ? offsets : state1 + 138, nnz1 + 12);
++        if (memcmp(block0, block1, sizeof(block0)) ||
++            memcmp(state0, state1, sizeof(state0)) ||
++            memcmp(nnz0, nnz1, sizeof(nnz0)) ||
++            ref.low != opt.low || ref.range != opt.range ||
++            ref.bytestream != opt.bytestream) {
++            fprintf(stderr, "Luma batch mismatch on case %d, transform %d, CBP %d\n",
++                    test, dct8, cbp);
++            return 1;
++        }
++    }
++    fprintf(stderr, "4000 luma macroblocks passed\n");
+     fprintf(stderr, "195840 bins, 20000 residuals, 20000 MVDs, and 20000 CBPs passed\n");
+     return 0;
+ }
+diff --git a/libavcodec/x86/h264_cabac_8bit.asm b/libavcodec/x86/h264_cabac_8bit.asm
+index e606123..23de2d8 100644
+--- a/libavcodec/x86/h264_cabac_8bit.asm
++++ b/libavcodec/x86/h264_cabac_8bit.asm
+@@ -8,6 +8,10 @@ cextern h264_cabac_tables
+ 
+ %if ARCH_X86_64
+ 
++SECTION_RODATA
++luma_scan8: db 0, 1, 8, 9, 2, 3, 10, 11, 16, 17, 24, 25, 18, 19, 26, 27
++SECTION .text
++
+ ; Live state: r0d=low, r5d=range, r7=bytestream, r8=tables.
+ ; r6 plus the macro argument (default r13) addresses the probability state. r9 returns the decoded bit in bit 0.
+ ; Clobbers r9-r11. H.264's caller provides padded, unchecked CABAC input.
+@@ -66,10 +70,22 @@ cextern h264_cabac_tables
+     inc         r9d
+ %endmacro
+ 
++%macro RESIDUAL_FUNCTION 2
+ INIT_XMM bmi2
+ ; CABACContext*, block, scan, qmul, significant state, last state,
+ ; absolute-level state, maximum coefficient count, 8x8 significance offsets.
+-cglobal h264_decode_residual_8, 9, 15, 0, 320
++%if %2
++%if %2 == 8
++cglobal %1, 10, 15, 1, 352
++%else
++cglobal %1, 10, 15, 0, 352
++%endif
++    mov         [rsp+320], r7d
++    mov         [rsp+328], r9
++    mov         dword [rsp+336], 0
++%else
++cglobal %1, 9, 15, 0, 320
++%endif
+     mov         [rsp], r0
+     mov         [rsp+8], r6
+     mov         [rsp+16], r4
+@@ -84,11 +100,49 @@ cglobal h264_decode_residual_8, 9, 15, 0, 320
+     mov         r7, [r0+16]
+     mov         r0d, [r0]
+     lea         r8, [h264_cabac_tables]
++%if %2
++.block:
++    mov         r14d, [rsp+336]
++%if %2 == 4
++    shr         r14d, 2
++%endif
++    bt          [rsp+320], r14d
++%if %2 == 4
++    jnc         .zero_group
++%else
++    jnc         .zero_block
++%endif
++%if %2 == 4
++    mov         r14d, [rsp+336]
++    lea         r10, [luma_scan8]
++    movzx       r14d, byte [r10+r14]
++    mov         r10, [rsp+328]
++    add         r14, r10
++    xor         r13d, r13d
++    xor         r10d, r10d
++    cmp         byte [r14-1], 0
++    setne       r13b
++    cmp         byte [r14-8], 0
++    setne       r10b
++    lea         r13d, [r13+r10*2]
++    mov         r6, [rsp+32]
++    RESIDUAL_GET_CABAC
++    test        r9d, 1
++    jz          .zero_block
++%endif
++    lea         r4, [rsp+64]
++    mov         r6, [rsp+16]
++    mov         r14d, %2 * %2 - 1
++%endif
+     xor         r12d, r12d
++%if %2 == 8
++    jmp         .significance8
++%elif %2 == 0
+     cmp         r14d, 63
+     je          .significance8
+     test        r14d, r14d
+     jz          .implicit_last
++%endif
+ .significance4:
+     mov         r13d, r12d
+     RESIDUAL_GET_CABAC
+@@ -202,6 +256,50 @@ cglobal h264_decode_residual_8, 9, 15, 0, 320
+     mov         [r1+r13*2], r14w
+     cmp         r4, [rsp+40]
+     jne         .coefficient
++%if %2
++    jmp         .store_count
++.zero_block:
++    mov         dword [rsp+48], 0
++.store_count:
++    mov         r14d, [rsp+336]
++    mov         r9d, [rsp+48]
++%if %2 == 8
++    mov         [rsp+340+r14], r9b
++%else
++    lea         r10, [luma_scan8]
++    movzx       r14d, byte [r10+r14]
++    mov         r10, [rsp+328]
++    mov         [r10+r14], r9b
++%endif
++    add         r1, %2 * %2 * 2
++    inc         dword [rsp+336]
++.next_block:
++    cmp         dword [rsp+336], 256 / (%2 * %2)
++    jb          .block
++%if %2 == 8
++    mov         r10, [rsp+328]
++    movd        m0, [rsp+340]
++    punpcklbw   m0, m0
++    movd        [r10], m0
++    movd        [r10+8], m0
++    psrlq       m0, 32
++    movd        [r10+16], m0
++    movd        [r10+24], m0
++%else
++    jmp         .finish
++.zero_group:
++    mov         r14d, [rsp+336]
++    lea         r10, [luma_scan8]
++    movzx       r14d, byte [r10+r14]
++    mov         r10, [rsp+328]
++    mov         word [r10+r14], 0
++    mov         word [r10+r14+8], 0
++    add         r1, 128
++    add         dword [rsp+336], 4
++    jmp         .next_block
++.finish:
++%endif
++%endif
+     mov         r4, [rsp]
+     mov         [r4], r0d
+     mov         [r4+4], r5d
+@@ -209,6 +307,12 @@ cglobal h264_decode_residual_8, 9, 15, 0, 320
+     mov         eax, [rsp+48]
+     RET
+ 
++%endmacro
++
++RESIDUAL_FUNCTION h264_decode_residual_8, 0
++RESIDUAL_FUNCTION h264_decode_luma4_8, 4
++RESIDUAL_FUNCTION h264_decode_luma8_8, 8
++
+ ; Decode horizontal and vertical MVDs while keeping CABAC state live.
+ ; Arguments: CABACContext*, states at offset 40, amvd_x, amvd_y, out[4].
+ ; Output is { mvd_x, mvd_y, abs_x_clipped_to_70, abs_y_clipped_to_70 }.
+diff --git a/libavcodec/x86/h264dsp_init.c b/libavcodec/x86/h264dsp_init.c
+index 093a629..16b63c2 100644
+--- a/libavcodec/x86/h264dsp_init.c
++++ b/libavcodec/x86/h264dsp_init.c
+@@ -193,6 +193,15 @@ int ff_h264_decode_residual_8_bmi2(struct CABACContext *c, int16_t *block,
+                                   uint8_t *significant, uint8_t *last, uint8_t *level,
+                                   int max_coeff, const uint8_t *sig_offsets);
+ 
++void ff_h264_decode_luma4_8_bmi2(struct CABACContext *, int16_t *,
++                               const uint8_t *, const uint32_t *,
++                               uint8_t *, uint8_t *, uint8_t *, int,
++                               const uint8_t *, uint8_t *);
++void ff_h264_decode_luma8_8_bmi2(struct CABACContext *, int16_t *,
++                               const uint8_t *, const uint32_t *,
++                               uint8_t *, uint8_t *, uint8_t *, int,
++                               const uint8_t *, uint8_t *);
++
+ av_cold void ff_h264dsp_init_x86(H264DSPContext *c, const int bit_depth,
+                                  const int chroma_format_idc)
+ {
+@@ -204,6 +213,8 @@ av_cold void ff_h264dsp_init_x86(H264DSPContext *c, const int bit_depth,
+     _Static_assert(offsetof(CABACContext, bytestream) == 16, "CABAC input offset");
+     if (bit_depth == 8 && chroma_format_idc == 1 && (cpu_flags & AV_CPU_FLAG_BMI2)) {
+         c->decode_residual = ff_h264_decode_residual_8_bmi2;
++        c->decode_luma_residual[0] = ff_h264_decode_luma4_8_bmi2;
++        c->decode_luma_residual[1] = ff_h264_decode_luma8_8_bmi2;
+         c->decode_cbp = ff_h264_decode_cbp_bmi2;
+         c->decode_mvd_pair = ff_h264_decode_mvd_pair_bmi2;
+     }

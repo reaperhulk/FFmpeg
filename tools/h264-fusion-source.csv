@@ -1,0 +1,15 @@
+experiment,source_helper,instructions
+luma-batch-v2,fill_decode_caches_internal,324117102
+luma-batch-v2,fill_decode_neighbors_internal,107663765
+luma-batch-v2,write_back_motion_list,72206253
+luma-batch-v2,decode_mb_skip_internal,45921354
+luma-batch-v2,write_back_motion,27084615
+luma-batch-v2,pred_pskip_motion,16879269
+luma-batch-v2,write_back_non_zero_count,16266589
+luma-batch-v2,pred_motion,15197463
+luma-batch-v2,pred_intra_mode,5805438
+luma-batch-v2,fetch_diagonal_mv,4354362
+luma-batch-v2,write_back_intra_pred_mode,1148511
+luma-batch-v2,pred_16x8_motion,739582
+luma-batch-v2,pred_8x16_motion,629081
+luma-batch-v2,get_dct8x8_allowed,314860
