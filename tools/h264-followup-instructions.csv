@@ -1,0 +1,8 @@
+experiment,clip,decode_instructions,reduction_percent
+baseline-a4b943bc,sintel,7686274980,0.000000
+mc-simple,sintel,7674314712,0.155606
+mc-inline,sintel,7585924020,1.305586
+chroma-avx2,sintel,7673244796,0.169525
+prefetch,sintel,7564230991,1.587817
+chroma-pair,sintel,7651942733,0.446670
+packed-cabac,sintel,7775111404,-1.155780
