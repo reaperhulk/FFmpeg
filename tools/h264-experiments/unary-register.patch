@@ -1,0 +1,61 @@
+--- a/libavcodec/x86/h264_cabac_8bit.asm
++++ b/libavcodec/x86/h264_cabac_8bit.asm
+@@ -11,8 +11,12 @@
+ ; Live state: r0d=low, r5d=range, r7=bytestream, r8=tables.
+ ; r6 plus the macro argument (default r13) addresses the probability state. r9 returns the decoded bit in bit 0.
+ ; Clobbers r9-r11. H.264's caller provides padded, unchecked CABAC input.
+-%macro RESIDUAL_GET_CABAC 0-1 r13
++%macro RESIDUAL_GET_CABAC 0-2 r13, 0
++%if %2
++    mov         r9d, r12d
++%else
+     movzx       r9d, byte [r6+%1]
++%endif
+     mov         r10d, r5d
+     and         r5d, 0xc0
+     lea         r11d, [r9+r5*2]
+@@ -29,8 +33,12 @@
+     movzx       r11d, byte [r8+r5]
+     shlx        r5d, r5d, r11d
+     shlx        r0d, r0d, r11d
++%if %2
++    movzx       r12d, byte [r8+r9+1152]
++%else
+     movzx       r10d, byte [r8+r9+1152]
+     mov         [r6+%1], r10b
++%endif
+     test        r0w, r0w
+     jnz         %%done
+     movzx       r10d, word [r7]
+@@ -162,13 +170,17 @@
+     cmp         r12d, 7
+     cmovb       r12d, r10d
+     mov         r14d, 2
++    mov         [rsp+56], r12d
++    movzx       r12d, byte [r6+r13]
+ .unary:
+-    RESIDUAL_GET_CABAC
+-    test        r9d, 1
+-    jz          .sign
++    RESIDUAL_GET_CABAC r13, 1
++    test        r9d, 1
++    jz          .unary_done
+     inc         r14d
+     cmp         r14d, 15
+     jb          .unary
++    mov         [r6+r13], r12b
++    mov         r12d, [rsp+56]
+     xor         r13d, r13d
+ .prefix:
+     RESIDUAL_GET_BYPASS
+@@ -189,6 +201,10 @@
+     jnz         .suffix
+ .suffix_done:
+     add         r14d, 14
++    jmp         .sign
++.unary_done:
++    mov         [r6+r13], r12b
++    mov         r12d, [rsp+56]
+ .sign:
+     RESIDUAL_GET_BYPASS
+     neg         r9d

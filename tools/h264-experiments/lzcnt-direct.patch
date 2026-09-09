@@ -1,0 +1,12 @@
+--- a/libavcodec/x86/h264_cabac_8bit.asm
++++ b/libavcodec/x86/h264_cabac_8bit.asm
+@@ -26,7 +26,8 @@
+     and         r10d, r11d
+     xor         r9, r11
+     sub         r0d, r10d
+-    movzx       r11d, byte [r8+r5]
++    lzcnt       r11d, r5d
++    sub         r11d, 23
+     shlx        r5d, r5d, r11d
+     shlx        r0d, r0d, r11d
+     movzx       r10d, byte [r8+r9+1152]
