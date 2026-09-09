@@ -48,6 +48,18 @@ DECLARE_QPEL16_H_AVX2(avg, 1)
 DECLARE_QPEL16_H_AVX2(avg, 2)
 DECLARE_QPEL16_H_AVX2(avg, 3)
 
+#define DECLARE_QPEL_HV_AVX2(op, size, x, y) \
+void ff_##op##_h264_qpel##size##_mc##x##y##_avx2(uint8_t *dst, const uint8_t *src, ptrdiff_t stride);
+#define DECLARE_QPEL_HV_AVX2_SET(op, size) \
+    DECLARE_QPEL_HV_AVX2(op, size, 1, 1) \
+    DECLARE_QPEL_HV_AVX2(op, size, 3, 1) \
+    DECLARE_QPEL_HV_AVX2(op, size, 1, 3) \
+    DECLARE_QPEL_HV_AVX2(op, size, 3, 3)
+DECLARE_QPEL_HV_AVX2_SET(put, 16)
+DECLARE_QPEL_HV_AVX2_SET(avg, 16)
+DECLARE_QPEL_HV_AVX2_SET(put, 8)
+DECLARE_QPEL_HV_AVX2_SET(avg, 8)
+
 void ff_avg_pixels4_mmxext(uint8_t *dst, const uint8_t *src, ptrdiff_t stride);
 void ff_put_pixels4x4_l2_mmxext(uint8_t *dst, const uint8_t *src1, const uint8_t *src2,
                                 ptrdiff_t stride);
@@ -472,6 +484,22 @@ av_cold void ff_h264qpel_init_x86(H264QpelContext *c, int bit_depth)
 
 #if ARCH_X86_64
     if (bit_depth == 8 && EXTERNAL_AVX2_FAST(cpu_flags)) {
+        c->put_h264_qpel_pixels_tab[0][5] = ff_put_h264_qpel16_mc11_avx2;
+        c->put_h264_qpel_pixels_tab[0][7] = ff_put_h264_qpel16_mc31_avx2;
+        c->put_h264_qpel_pixels_tab[0][13] = ff_put_h264_qpel16_mc13_avx2;
+        c->put_h264_qpel_pixels_tab[0][15] = ff_put_h264_qpel16_mc33_avx2;
+        c->avg_h264_qpel_pixels_tab[0][5] = ff_avg_h264_qpel16_mc11_avx2;
+        c->avg_h264_qpel_pixels_tab[0][7] = ff_avg_h264_qpel16_mc31_avx2;
+        c->avg_h264_qpel_pixels_tab[0][13] = ff_avg_h264_qpel16_mc13_avx2;
+        c->avg_h264_qpel_pixels_tab[0][15] = ff_avg_h264_qpel16_mc33_avx2;
+        c->put_h264_qpel_pixels_tab[1][5] = ff_put_h264_qpel8_mc11_avx2;
+        c->put_h264_qpel_pixels_tab[1][7] = ff_put_h264_qpel8_mc31_avx2;
+        c->put_h264_qpel_pixels_tab[1][13] = ff_put_h264_qpel8_mc13_avx2;
+        c->put_h264_qpel_pixels_tab[1][15] = ff_put_h264_qpel8_mc33_avx2;
+        c->avg_h264_qpel_pixels_tab[1][5] = ff_avg_h264_qpel8_mc11_avx2;
+        c->avg_h264_qpel_pixels_tab[1][7] = ff_avg_h264_qpel8_mc31_avx2;
+        c->avg_h264_qpel_pixels_tab[1][13] = ff_avg_h264_qpel8_mc13_avx2;
+        c->avg_h264_qpel_pixels_tab[1][15] = ff_avg_h264_qpel8_mc33_avx2;
         c->put_h264_qpel_pixels_tab[0][1] = ff_put_h264_qpel16_mc10_avx2;
         c->put_h264_qpel_pixels_tab[0][2] = ff_put_h264_qpel16_mc20_avx2;
         c->put_h264_qpel_pixels_tab[0][3] = ff_put_h264_qpel16_mc30_avx2;

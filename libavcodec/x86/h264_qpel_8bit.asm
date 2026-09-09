@@ -152,6 +152,108 @@ QPEL16_V_AVX2 avg, 2
 QPEL16_V_AVX2 avg, 3
 %endif
 
+; Odd/odd quarter-pel positions average independently clipped horizontal
+; and vertical half-pel samples. Fuse both filters and the two averages to
+; avoid temporary blocks and repeated calls through the C wrappers.
+%if ARCH_X86_64
+%macro QPEL_HV_AVX2 4 ; operation, width, horizontal fraction, vertical fraction
+%if %2 == 16
+INIT_YMM avx2
+%else
+INIT_XMM avx2
+%endif
+cglobal %1_h264_qpel%2_mc%3%4, 3, 4, 16
+    mov          r3, r1
+%if %4 == 3
+    add          r3, r2
+%endif
+%if %3 == 3
+    inc          r1
+%endif
+    sub          r1, r2
+    sub          r1, r2
+    vpbroadcastw m11, [pw_16]
+    vpbroadcastw m12, [pw_5]
+    mova         m13, [qpel_c01]
+    mova         m14, [qpel_c23]
+    mova         m15, [qpel_c45]
+%assign i 0
+%rep 5
+    pmovzxbw     m %+ i, [r1]
+    add          r1, r2
+%assign i i+1
+%endrep
+%rep %2
+    pmovzxbw     m5, [r1]
+    paddw        m6, m2, m3
+    psllw        m6, 2
+    psubw        m6, m1
+    psubw        m6, m4
+    pmullw       m6, m12
+    paddw        m7, m0, m5
+    paddw        m7, m11
+    paddw        m6, m7
+    psraw        m6, 5
+%if %2 == 16
+    vextracti128 xm7, m6, 1
+    packuswb     xm6, xm7
+%else
+    packuswb     m6, m6
+%endif
+    movu         xm8, [r3-2]
+%if %2 == 16
+    vinserti128  m8, m8, [r3+6], 1
+%endif
+    pshufb       m9, m8, [qpel_h01]
+    pshufb       m10, m8, [qpel_h23]
+    pmaddubsw    m9, m13
+    pmaddubsw    m10, m14
+    pshufb       m8, [qpel_h45]
+    paddw        m9, m10
+    pmaddubsw    m8, m15
+    paddw        m9, m8
+    paddw        m9, m11
+    psraw        m9, 5
+%if %2 == 16
+    vextracti128 xm10, m9, 1
+    packuswb     xm9, xm10
+%else
+    packuswb     m9, m9
+%endif
+    pavgb        xm6, xm9
+%ifidn %1, avg
+%if %2 == 16
+    pavgb        xm6, [r0]
+%else
+    movq         xm7, [r0]
+    pavgb        xm6, xm7
+%endif
+%endif
+%if %2 == 16
+    movu         [r0], xm6
+%else
+    movq         [r0], xm6
+%endif
+    add          r0, r2
+    add          r1, r2
+    add          r3, r2
+    SWAP         0, 1, 2, 3, 4, 5
+%endrep
+    RET
+%endmacro
+
+%macro QPEL_HV_AVX2_SET 2
+QPEL_HV_AVX2 %1, %2, 1, 1
+QPEL_HV_AVX2 %1, %2, 3, 1
+QPEL_HV_AVX2 %1, %2, 1, 3
+QPEL_HV_AVX2 %1, %2, 3, 3
+%endmacro
+QPEL_HV_AVX2_SET put, 16
+QPEL_HV_AVX2_SET avg, 16
+QPEL_HV_AVX2_SET put, 8
+QPEL_HV_AVX2_SET avg, 8
+%endif
+
 ; void ff_avg_pixels4_mmxext(uint8_t *block, const uint8_t *pixels,
 ;                            ptrdiff_t line_size)
 INIT_MMX mmxext
