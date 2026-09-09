@@ -484,7 +484,7 @@ zeromv:
     return;
 }
 
-static av_always_inline void fill_decode_neighbors(const H264Context *h, H264SliceContext *sl, int mb_type)
+static av_always_inline void fill_decode_neighbors_internal(const H264Context *h, H264SliceContext *sl, int mb_type, int frame_mbaff)
 {
     const int mb_xy = sl->mb_xy;
     int topleft_xy, top_xy, topright_xy, left_xy[LEFT_MBS];
@@ -506,7 +506,7 @@ static av_always_inline void fill_decode_neighbors(const H264Context *h, H264Sli
     topright_xy   = top_xy + 1;
     left_xy[LBOT] = left_xy[LTOP] = mb_xy - 1;
     sl->left_block = left_block_options[0];
-    if (FRAME_MBAFF(h)) {
+    if (frame_mbaff) {
         const int left_mb_field_flag = IS_INTERLACED(h->cur_pic.mb_type[mb_xy - 1]);
         const int curr_mb_field_flag = IS_INTERLACED(mb_type);
         if (sl->mb_y & 1) {
@@ -573,7 +573,14 @@ static av_always_inline void fill_decode_neighbors(const H264Context *h, H264Sli
         sl->topright_type = 0;
 }
 
-static av_always_inline void fill_decode_caches(const H264Context *h, H264SliceContext *sl, int mb_type)
+static av_always_inline void fill_decode_neighbors(const H264Context *h,
+                                                    H264SliceContext *sl, int mb_type)
+{
+    fill_decode_neighbors_internal(h, sl, mb_type, FRAME_MBAFF(h));
+}
+
+static av_always_inline void fill_decode_caches_internal(const H264Context *h, H264SliceContext *sl, int mb_type,
+                                                        int chroma_format_idc, int frame_mbaff)
 {
     int topleft_xy, top_xy, topright_xy, left_xy[LEFT_MBS];
     int topleft_type, top_type, topright_type, left_type[LEFT_MBS];
@@ -687,7 +694,7 @@ static av_always_inline void fill_decode_caches(const H264Context *h, H264SliceC
         if (top_type & nnz_mask) {
             nnz = h->non_zero_count[top_xy];
             AV_COPY32(&nnz_cache[4 + 8 * 0], &nnz[4 * 3]);
-            if (!h->chroma_y_shift) {
+            if (chroma_format_idc > 1) {
                 AV_COPY32(&nnz_cache[4 + 8 *  5], &nnz[4 *  7]);
                 AV_COPY32(&nnz_cache[4 + 8 * 10], &nnz[4 * 11]);
             } else {
@@ -707,12 +714,12 @@ static av_always_inline void fill_decode_caches(const H264Context *h, H264SliceC
                 nnz = h->non_zero_count[left_xy[LEFT(i)]];
                 nnz_cache[3 + 8 * 1 + 2 * 8 * i] = nnz[left_block[8 + 0 + 2 * i]];
                 nnz_cache[3 + 8 * 2 + 2 * 8 * i] = nnz[left_block[8 + 1 + 2 * i]];
-                if (CHROMA444(h)) {
+                if ((chroma_format_idc == 3)) {
                     nnz_cache[3 + 8 *  6 + 2 * 8 * i] = nnz[left_block[8 + 0 + 2 * i] + 4 * 4];
                     nnz_cache[3 + 8 *  7 + 2 * 8 * i] = nnz[left_block[8 + 1 + 2 * i] + 4 * 4];
                     nnz_cache[3 + 8 * 11 + 2 * 8 * i] = nnz[left_block[8 + 0 + 2 * i] + 8 * 4];
                     nnz_cache[3 + 8 * 12 + 2 * 8 * i] = nnz[left_block[8 + 1 + 2 * i] + 8 * 4];
-                } else if (CHROMA422(h)) {
+                } else if ((chroma_format_idc == 2)) {
                     nnz_cache[3 + 8 *  6 + 2 * 8 * i] = nnz[left_block[8 + 0 + 2 * i] - 2 + 4 * 4];
                     nnz_cache[3 + 8 *  7 + 2 * 8 * i] = nnz[left_block[8 + 1 + 2 * i] - 2 + 4 * 4];
                     nnz_cache[3 + 8 * 11 + 2 * 8 * i] = nnz[left_block[8 + 0 + 2 * i] - 2 + 8 * 4];
@@ -831,7 +838,7 @@ static av_always_inline void fill_decode_caches(const H264Context *h, H264SliceC
                 }
             }
 
-            if ((mb_type & (MB_TYPE_SKIP | MB_TYPE_DIRECT2)) && !FRAME_MBAFF(h))
+            if ((mb_type & (MB_TYPE_SKIP | MB_TYPE_DIRECT2)) && !frame_mbaff)
                 continue;
 
             if (!(mb_type & (MB_TYPE_SKIP | MB_TYPE_DIRECT2))) {
@@ -913,7 +920,7 @@ static av_always_inline void fill_decode_caches(const H264Context *h, H264SliceC
     MAP_F2F(scan8[0] - 1 + 2 * 8, left_type[LBOT])                      \
     MAP_F2F(scan8[0] - 1 + 3 * 8, left_type[LBOT])
 
-            if (FRAME_MBAFF(h)) {
+            if (frame_mbaff) {
                 if (MB_FIELD(sl)) {
 
 #define MAP_F2F(idx, mb_type)                                           \
@@ -944,10 +951,18 @@ static av_always_inline void fill_decode_caches(const H264Context *h, H264SliceC
     sl->neighbor_transform_size = !!IS_8x8DCT(top_type) + !!IS_8x8DCT(left_type[LTOP]);
 }
 
+static av_always_inline void fill_decode_caches(const H264Context *h,
+                                                H264SliceContext *sl, int mb_type)
+{
+    fill_decode_caches_internal(h, sl, mb_type, h->ps.sps->chroma_format_idc,
+                               FRAME_MBAFF(h));
+}
+
 /**
  * decodes a P_SKIP or B_SKIP macroblock
  */
-av_unused static av_always_inline void decode_mb_skip(const H264Context *h, H264SliceContext *sl)
+av_unused static av_always_inline void decode_mb_skip_internal(const H264Context *h, H264SliceContext *sl,
+                                                             int chroma_format_idc, int frame_mbaff)
 {
     const int mb_xy = sl->mb_xy;
     int mb_type     = 0;
@@ -961,15 +976,15 @@ av_unused static av_always_inline void decode_mb_skip(const H264Context *h, H264
         // just for fill_caches. pred_direct_motion will set the real mb_type
         mb_type |= MB_TYPE_L0L1 | MB_TYPE_DIRECT2 | MB_TYPE_SKIP;
         if (sl->direct_spatial_mv_pred) {
-            fill_decode_neighbors(h, sl, mb_type);
-            fill_decode_caches(h, sl, mb_type); //FIXME check what is needed and what not ...
+            fill_decode_neighbors_internal(h, sl, mb_type, frame_mbaff);
+            fill_decode_caches_internal(h, sl, mb_type, chroma_format_idc, frame_mbaff); //FIXME check what is needed and what not ...
         }
         ff_h264_pred_direct_motion(h, sl, &mb_type);
         mb_type |= MB_TYPE_SKIP;
     } else {
         mb_type |= MB_TYPE_16x16 | MB_TYPE_P0L0 | MB_TYPE_P1L0 | MB_TYPE_SKIP;
 
-        fill_decode_neighbors(h, sl, mb_type);
+        fill_decode_neighbors_internal(h, sl, mb_type, frame_mbaff);
         pred_pskip_motion(h, sl);
     }
 
@@ -978,6 +993,11 @@ av_unused static av_always_inline void decode_mb_skip(const H264Context *h, H264
     h->cur_pic.qscale_table[mb_xy] = sl->qscale;
     h->slice_table[mb_xy]          = sl->slice_num;
     sl->prev_mb_skipped            = 1;
+}
+
+av_unused static av_always_inline void decode_mb_skip(const H264Context *h, H264SliceContext *sl)
+{
+    decode_mb_skip_internal(h, sl, h->ps.sps->chroma_format_idc, FRAME_MBAFF(h));
 }
 
 #endif /* AVCODEC_H264_MVPRED_H */

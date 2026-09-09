@@ -1945,14 +1945,17 @@ static av_always_inline void decode_cabac_luma_residual(const H264Context *h, H2
  * Decode a macroblock.
  * @return 0 if OK, ER_AC_ERROR / ER_DC_ERROR / ER_MV_ERROR if an error is noticed
  */
-int ff_h264_decode_mb_cabac(const H264Context *h, H264SliceContext *sl)
+static av_always_inline int decode_mb_cabac_internal(const H264Context *h,
+                                                    H264SliceContext *sl,
+                                                    int pixel_shift,
+                                                    int chroma_format_idc,
+                                                    int frame_mbaff)
 {
     const SPS *sps = h->ps.sps;
     int mb_xy;
     int mb_type, partition_count, cbp = 0;
     int dct8x8_allowed = h->ps.pps->transform_8x8_mode;
-    const int decode_chroma = sps->chroma_format_idc == 1 || sps->chroma_format_idc == 2;
-    const int pixel_shift = h->pixel_shift;
+    const int decode_chroma = chroma_format_idc == 1 || chroma_format_idc == 2;
 
     mb_xy = sl->mb_xy = sl->mb_x + sl->mb_y*h->mb_stride;
 
@@ -1960,20 +1963,20 @@ int ff_h264_decode_mb_cabac(const H264Context *h, H264SliceContext *sl)
     if (sl->slice_type_nos != AV_PICTURE_TYPE_I) {
         int skip;
         /* a skipped mb needs the aff flag from the following mb */
-        if (FRAME_MBAFF(h) && (sl->mb_y & 1) == 1 && sl->prev_mb_skipped)
+        if (frame_mbaff && (sl->mb_y & 1) == 1 && sl->prev_mb_skipped)
             skip = sl->next_mb_skipped;
         else
             skip = decode_cabac_mb_skip(h, sl, sl->mb_x, sl->mb_y );
         /* read skip flags */
         if( skip ) {
-            if (FRAME_MBAFF(h) && (sl->mb_y & 1) == 0) {
+            if (frame_mbaff && (sl->mb_y & 1) == 0) {
                 h->cur_pic.mb_type[mb_xy] = MB_TYPE_SKIP;
                 sl->next_mb_skipped = decode_cabac_mb_skip(h, sl, sl->mb_x, sl->mb_y+1 );
                 if(!sl->next_mb_skipped)
                     sl->mb_mbaff = sl->mb_field_decoding_flag = decode_cabac_field_decoding_flag(h, sl);
             }
 
-            decode_mb_skip(h, sl);
+            decode_mb_skip_internal(h, sl, chroma_format_idc, frame_mbaff);
 
             h->cbp_table[mb_xy] = 0;
             h->chroma_pred_mode_table[mb_xy] = 0;
@@ -1983,7 +1986,7 @@ int ff_h264_decode_mb_cabac(const H264Context *h, H264SliceContext *sl)
 
         }
     }
-    if (FRAME_MBAFF(h)) {
+    if (frame_mbaff) {
         if ((sl->mb_y & 1) == 0)
             sl->mb_mbaff =
             sl->mb_field_decoding_flag = decode_cabac_field_decoding_flag(h, sl);
@@ -1991,7 +1994,7 @@ int ff_h264_decode_mb_cabac(const H264Context *h, H264SliceContext *sl)
 
     sl->prev_mb_skipped = 0;
 
-    fill_decode_neighbors(h, sl, -(MB_FIELD(sl)));
+    fill_decode_neighbors_internal(h, sl, -(MB_FIELD(sl)), frame_mbaff);
 
     if (sl->slice_type_nos == AV_PICTURE_TYPE_B) {
         int ctx = 0;
@@ -2097,7 +2100,7 @@ decode_intra_mb:
         return 0;
     }
 
-    fill_decode_caches(h, sl, mb_type);
+    fill_decode_caches_internal(h, sl, mb_type, chroma_format_idc, frame_mbaff);
 
     if( IS_INTRA( mb_type ) ) {
         int i, pred_mode;
@@ -2383,7 +2386,7 @@ decode_intra_mb:
 
     /* It would be better to do this in fill_decode_caches, but we don't know
      * the transform mode of the current macroblock there. */
-    if (CHROMA444(h) && IS_8x8DCT(mb_type)){
+    if ((chroma_format_idc == 3) && IS_8x8DCT(mb_type)){
         int i;
         uint8_t *nnz_cache = sl->non_zero_count_cache;
         if (h->x264_build < 151U) {
@@ -2467,10 +2470,10 @@ decode_intra_mb:
         }
 
         decode_cabac_luma_residual(h, sl, scan, scan8x8, pixel_shift, mb_type, cbp, 0);
-        if (CHROMA444(h)) {
+        if ((chroma_format_idc == 3)) {
             decode_cabac_luma_residual(h, sl, scan, scan8x8, pixel_shift, mb_type, cbp, 1);
             decode_cabac_luma_residual(h, sl, scan, scan8x8, pixel_shift, mb_type, cbp, 2);
-        } else if (CHROMA422(h)) {
+        } else if ((chroma_format_idc == 2)) {
             if( cbp&0x30 ){
                 int c;
                 for (c = 0; c < 2; c++)
@@ -2529,4 +2532,14 @@ decode_intra_mb:
     write_back_non_zero_count(h, sl);
 
     return 0;
+}
+
+int ff_h264_decode_mb_cabac(const H264Context *h, H264SliceContext *sl)
+{
+    /* Specialize the common format and propagate it through the inlined
+     * syntax/cache helpers. Keep field-picture handling in both paths. */
+    if (!h->pixel_shift && h->ps.sps->chroma_format_idc == 1 && !FRAME_MBAFF(h))
+        return decode_mb_cabac_internal(h, sl, 0, 1, 0);
+    return decode_mb_cabac_internal(h, sl, h->pixel_shift,
+                                    h->ps.sps->chroma_format_idc, FRAME_MBAFF(h));
 }
