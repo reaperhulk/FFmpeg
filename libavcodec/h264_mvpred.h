@@ -484,7 +484,7 @@ zeromv:
     return;
 }
 
-static void fill_decode_neighbors(const H264Context *h, H264SliceContext *sl, int mb_type)
+static av_always_inline void fill_decode_neighbors(const H264Context *h, H264SliceContext *sl, int mb_type)
 {
     const int mb_xy = sl->mb_xy;
     int topleft_xy, top_xy, topright_xy, left_xy[LEFT_MBS];
@@ -573,7 +573,7 @@ static void fill_decode_neighbors(const H264Context *h, H264SliceContext *sl, in
         sl->topright_type = 0;
 }
 
-static void fill_decode_caches(const H264Context *h, H264SliceContext *sl, int mb_type)
+static av_always_inline void fill_decode_caches(const H264Context *h, H264SliceContext *sl, int mb_type)
 {
     int topleft_xy, top_xy, topright_xy, left_xy[LEFT_MBS];
     int topleft_type, top_type, topright_type, left_type[LEFT_MBS];
@@ -947,7 +947,7 @@ static void fill_decode_caches(const H264Context *h, H264SliceContext *sl, int m
 /**
  * decodes a P_SKIP or B_SKIP macroblock
  */
-av_unused static void decode_mb_skip(const H264Context *h, H264SliceContext *sl)
+av_unused static av_always_inline void decode_mb_skip(const H264Context *h, H264SliceContext *sl)
 {
     const int mb_xy = sl->mb_xy;
     int mb_type     = 0;
