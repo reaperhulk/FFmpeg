@@ -30,6 +30,15 @@
 #include "fpel.h"
 #include "qpel.h"
 
+#define DECLARE_QPEL16_V_AVX2(op, pos) \
+void ff_##op##_h264_qpel16_mc0##pos##_avx2(uint8_t *dst, const uint8_t *src, ptrdiff_t stride);
+DECLARE_QPEL16_V_AVX2(put, 1)
+DECLARE_QPEL16_V_AVX2(put, 2)
+DECLARE_QPEL16_V_AVX2(put, 3)
+DECLARE_QPEL16_V_AVX2(avg, 1)
+DECLARE_QPEL16_V_AVX2(avg, 2)
+DECLARE_QPEL16_V_AVX2(avg, 3)
+
 void ff_avg_pixels4_mmxext(uint8_t *dst, const uint8_t *src, ptrdiff_t stride);
 void ff_put_pixels4x4_l2_mmxext(uint8_t *dst, const uint8_t *src1, const uint8_t *src2,
                                 ptrdiff_t stride);
@@ -451,4 +460,15 @@ av_cold void ff_h264qpel_init_x86(H264QpelContext *c, int bit_depth)
             H264_QPEL_FUNCS_10(3, 0, ssse3_cache64);
         }
     }
+
+#if ARCH_X86_64
+    if (bit_depth == 8 && EXTERNAL_AVX2_FAST(cpu_flags)) {
+        c->put_h264_qpel_pixels_tab[0][4]  = ff_put_h264_qpel16_mc01_avx2;
+        c->put_h264_qpel_pixels_tab[0][8]  = ff_put_h264_qpel16_mc02_avx2;
+        c->put_h264_qpel_pixels_tab[0][12] = ff_put_h264_qpel16_mc03_avx2;
+        c->avg_h264_qpel_pixels_tab[0][4]  = ff_avg_h264_qpel16_mc01_avx2;
+        c->avg_h264_qpel_pixels_tab[0][8]  = ff_avg_h264_qpel16_mc02_avx2;
+        c->avg_h264_qpel_pixels_tab[0][12] = ff_avg_h264_qpel16_mc03_avx2;
+    }
+#endif
 }

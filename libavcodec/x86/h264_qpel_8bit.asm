@@ -31,6 +31,65 @@ cextern pb_0
 
 SECTION .text
 
+; Full-width 8-bit vertical interpolation, with quarter-pel averaging fused.
+; Six-tap filter: (a - 5*b + 20*c + 20*d - 5*e + f + 16) >> 5.
+%if ARCH_X86_64
+%macro QPEL16_V_AVX2 2
+INIT_YMM avx2
+cglobal %1_h264_qpel16_mc0%2, 3, 4, 11
+    sub          r1, r2
+    sub          r1, r2
+%if %2 == 1
+    lea          r3, [r2*3]
+    neg          r3
+%elif %2 == 3
+    mov          r3, r2
+    neg          r3
+    add          r3, r3
+%endif
+    vpbroadcastw m9, [pw_5]
+    vpbroadcastw m10, [pw_16]
+%assign i 0
+%rep 5
+    pmovzxbw     m %+ i, [r1]
+    add          r1, r2
+%assign i i+1
+%endrep
+%rep 16
+    pmovzxbw     m5, [r1]
+    paddw        m6, m2, m3
+    psllw        m6, 2
+    psubw        m6, m1
+    psubw        m6, m4
+    pmullw       m6, m9
+    paddw        m7, m0, m5
+    paddw        m7, m10
+    paddw        m6, m7
+    psraw        m6, 5
+    vextracti128 xm7, m6, 1
+    packuswb     xm6, xm7
+%if %2 != 2
+    pavgb        xm6, [r1+r3]
+%endif
+%ifidn %1, avg
+    pavgb        xm6, [r0]
+%endif
+    movu         [r0], xm6
+    add          r0, r2
+    add          r1, r2
+    SWAP         0, 1, 2, 3, 4, 5
+%endrep
+    RET
+%endmacro
+
+QPEL16_V_AVX2 put, 1
+QPEL16_V_AVX2 put, 2
+QPEL16_V_AVX2 put, 3
+QPEL16_V_AVX2 avg, 1
+QPEL16_V_AVX2 avg, 2
+QPEL16_V_AVX2 avg, 3
+%endif
+
 ; void ff_avg_pixels4_mmxext(uint8_t *block, const uint8_t *pixels,
 ;                            ptrdiff_t line_size)
 INIT_MMX mmxext
