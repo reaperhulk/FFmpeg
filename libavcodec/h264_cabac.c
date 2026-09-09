@@ -26,6 +26,7 @@
  */
 
 #define CABAC(h) 1
+#define H264_CABAC_BSF 1
 #define UNCHECKED_BITSTREAM_READER 1
 #define INT_BIT (CHAR_BIT * sizeof(int))
 

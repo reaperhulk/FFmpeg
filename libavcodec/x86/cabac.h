@@ -92,6 +92,18 @@
 #else /* __LZCNT__ */
 #define BRANCHLESS_GET_CABAC_RENORM(range, rangeq, norm_off, tables) \
         "movzbl "norm_off"("tables", "rangeq"), %%ecx                   \n\t"
+#if defined(H264_CABAC_BSF)
+/* low retains a nonzero marker; BSF directly gives its refill position. */
+#define BRANCHLESS_GET_CABAC_REFILL(low, tmp, norm_off, tables) \
+        "movzwl (%%"FF_REG_c"), "tmp"                                   \n\t"\
+        "bsf    "low", %%ecx                                            \n\t"\
+        "bswap  "tmp"                                                   \n\t"\
+        "shr    $15, "tmp"                                              \n\t"\
+        "sub    $16, %%ecx                                              \n\t"\
+        "sub    $0xFFFF, "tmp"                                          \n\t"\
+        "shl    %%cl, "tmp"                                             \n\t"\
+        "add    "tmp", "low"                                            \n\t"
+#else
 #define BRANCHLESS_GET_CABAC_REFILL(low, tmp, norm_off, tables) \
         "movzwl (%%"FF_REG_c") , "tmp"                                  \n\t"\
         "lea    -1("low")   , %%ecx                                     \n\t"\
@@ -105,6 +117,7 @@
         "add    $7          , %%ecx                                     \n\t"\
         "shl    %%cl        , "tmp"                                     \n\t"\
         "add    "tmp"       , "low"                                     \n\t"
+#endif
 #endif /* __LZCNT__ */
 
 #define BRANCHLESS_GET_CABAC(ret, retq, statep, low, lowword, range, rangeq, tmp, tmpbyte, byte, end, norm_off, lps_off, mlps_off, tables) \
