@@ -1,0 +1,26 @@
+diff --git a/libavcodec/h264_mb.c b/libavcodec/h264_mb.c
+index aa87db2..78ce20f 100644
+--- a/libavcodec/h264_mb.c
++++ b/libavcodec/h264_mb.c
+@@ -485,6 +485,7 @@ static av_always_inline void prefetch_motion(const H264Context *h, H264SliceCont
+                                              int list, int pixel_shift,
+                                              int chroma_idc)
+ {
++    return; /* experiment: no software motion prefetch */
+     /* fetch pixels for estimated mv 4 macroblocks ahead
+      * optimized for 64byte cache lines */
+     const int refn = sl->ref_cache[list][scan8[0]];
+diff --git a/libavcodec/h264_mb_template.c b/libavcodec/h264_mb_template.c
+index 050e1db..a4d3828 100644
+--- a/libavcodec/h264_mb_template.c
++++ b/libavcodec/h264_mb_template.c
+@@ -57,8 +57,7 @@ static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContex
+     dest_cb = h->cur_pic.f->data[1] +  (mb_x << PIXEL_SHIFT) * 8 + mb_y * sl->uvlinesize * block_h;
+     dest_cr = h->cur_pic.f->data[2] +  (mb_x << PIXEL_SHIFT) * 8 + mb_y * sl->uvlinesize * block_h;
+ 
+-    h->vdsp.prefetch(dest_y  + (sl->mb_x & 3) * 4 * sl->linesize   + (64 << PIXEL_SHIFT), sl->linesize,       4);
+-    h->vdsp.prefetch(dest_cb + (sl->mb_x & 7)     * sl->uvlinesize + (64 << PIXEL_SHIFT), dest_cr - dest_cb, 2);
++
+ 
+     h->list_counts[mb_xy] = sl->list_count;
+ 

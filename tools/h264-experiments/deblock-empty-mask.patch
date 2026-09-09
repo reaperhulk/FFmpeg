@@ -1,0 +1,23 @@
+diff --git a/libavcodec/x86/h264_deblock.asm b/libavcodec/x86/h264_deblock.asm
+index c24d3e5..8f25660 100644
+--- a/libavcodec/x86/h264_deblock.asm
++++ b/libavcodec/x86/h264_deblock.asm
+@@ -277,6 +277,10 @@ cglobal deblock_v_luma_8, 5,5,10, 32*ARCH_X86_32, pix_, stride_, alpha_, beta_,
+     pcmpeqb m9, m9
+     pcmpeqb m9, m8
+     pandn   m9, m7
++%if cpuflag(avx)
++    ptest   m9, m9
++    jz      .done
++%endif
+     pand    m8, m9
+ %else
+     mov     r3, r4mp
+@@ -322,6 +326,7 @@ cglobal deblock_v_luma_8, 5,5,10, 32*ARCH_X86_32, pix_, stride_, alpha_, beta_,
+     DEBLOCK_P0_Q0
+     mova    [base3_q + 2*stride_q], m1
+     mova    [pix_q], m2
++.done:
+     RET
+ 
+ ;-----------------------------------------------------------------------------

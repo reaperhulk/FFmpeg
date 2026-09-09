@@ -1,0 +1,39 @@
+hv2 only
+checkasm:
+ - CPU: INTEL(R) XEON(R) PLATINUM 8573C (000C06F2)
+ - Timing source: x86 (rdtsc)
+ - Bench duration: 1000 µs per function (2648499 cycles)
+ - Random seed: 574850295
+SSE2:
+ - h264qpel.put [OK]
+SSSE3:
+ - h264qpel.put [OK]
+AVX2:
+ - h264qpel.put [OK]
+checkasm: all 3 tests passed
+Benchmark results:
+  name                             cycles (vs ref)
+  put_h264_qpel_16_mc22_8_c:       2317.0
+  put_h264_qpel_16_mc22_8_sse2:     354.2 ( 6.31x)
+  put_h264_qpel_16_mc22_8_ssse3:    334.7 ( 5.06x)
+  put_h264_qpel_16_mc22_8_avx2:     187.3 (12.04x)
+
+hv1 + hv2
+checkasm:
+ - CPU: INTEL(R) XEON(R) PLATINUM 8573C (000C06F2)
+ - Timing source: x86 (rdtsc)
+ - Bench duration: 1000 µs per function (37193443 cycles)
+ - Random seed: 2785167175
+SSE2:
+ - h264qpel.put [OK]
+SSSE3:
+ - h264qpel.put [OK]
+AVX2:
+ - h264qpel.put [OK]
+checkasm: all 3 tests passed
+Benchmark results:
+  name                             cycles (vs ref)
+  put_h264_qpel_16_mc22_8_c:       1234.8
+  put_h264_qpel_16_mc22_8_sse2:     208.8 ( 5.87x)
+  put_h264_qpel_16_mc22_8_ssse3:    267.2 ( 4.61x)
+  put_h264_qpel_16_mc22_8_avx2:     160.6 ( 7.24x)

@@ -1,0 +1,136 @@
+--- a/libavcodec/x86/h264_qpel.c
++++ b/libavcodec/x86/h264_qpel.c
+@@ -298,6 +298,74 @@
+     put_h264_qpel ## SIZE ## _hv_lowpass_ ## MMX(halfHV, halfV, src, SIZE, stride);\
+     ff_ ## OPNAME ## pixels ## SIZE ## _l2_shift5_ ## SHIFT5_EXT(dst, halfV+3, halfHV, stride);\
+ }\
++
++
++#if ARCH_X86_64
++void ff_put_h264_qpel16_hv2_lowpass_avx2(uint8_t *dst, int16_t *tmp, ptrdiff_t stride);
++static av_always_inline void put_h264_qpel16_hv_lowpass_avx2(uint8_t *dst, int16_t *tmp, const uint8_t *src, ptrdiff_t dst_stride, ptrdiff_t src_stride)
++{
++    put_h264_qpel8or16_hv1_lowpass_sse2(tmp, src, src_stride, 16);
++    ff_put_h264_qpel16_hv2_lowpass_avx2(dst, tmp, dst_stride);
++}
++void ff_avg_h264_qpel16_hv2_lowpass_avx2(uint8_t *dst, int16_t *tmp, ptrdiff_t stride);
++static av_always_inline void avg_h264_qpel16_hv_lowpass_avx2(uint8_t *dst, int16_t *tmp, const uint8_t *src, ptrdiff_t dst_stride, ptrdiff_t src_stride)
++{
++    put_h264_qpel8or16_hv1_lowpass_sse2(tmp, src, src_stride, 16);
++    ff_avg_h264_qpel16_hv2_lowpass_avx2(dst, tmp, dst_stride);
++}
++
++#define H264_MC_HALF_HV(OPNAME, SIZE, MMX, ALIGN, SHIFT5_EXT) \
++static void OPNAME ## h264_qpel ## SIZE ## _mc22_ ## MMX(uint8_t *dst, const uint8_t *src, ptrdiff_t stride)\
++{\
++    LOCAL_ALIGNED(ALIGN, uint16_t, temp, [SIZE*(SIZE<8?12:24)]);\
++    OPNAME ## h264_qpel ## SIZE ## _hv_lowpass_ ## MMX(dst, temp, src, stride, stride);\
++}\
++\
++static void OPNAME ## h264_qpel ## SIZE ## _mc21_ ## MMX(uint8_t *dst, const uint8_t *src, ptrdiff_t stride)\
++{\
++    LOCAL_ALIGNED(ALIGN, uint8_t, temp, [SIZE*(SIZE<8?12:24)*2 + SIZE*SIZE]);\
++    uint8_t * const halfHV= temp;\
++    int16_t * const halfV= (int16_t*)(temp + SIZE*SIZE);\
++    av_assert2(((uintptr_t)temp & 7) == 0);\
++    put_h264_qpel ## SIZE ## _hv_lowpass_ ## MMX(halfHV, halfV, src, SIZE, stride);\
++    ff_ ## OPNAME ## h264_qpel ## SIZE ## _h_lowpass_l2_ ## MMX(dst, src, halfHV, stride, SIZE);\
++}\
++\
++static void OPNAME ## h264_qpel ## SIZE ## _mc23_ ## MMX(uint8_t *dst, const uint8_t *src, ptrdiff_t stride)\
++{\
++    LOCAL_ALIGNED(ALIGN, uint8_t, temp, [SIZE*(SIZE<8?12:24)*2 + SIZE*SIZE]);\
++    uint8_t * const halfHV= temp;\
++    int16_t * const halfV= (int16_t*)(temp + SIZE*SIZE);\
++    av_assert2(((uintptr_t)temp & 7) == 0);\
++    put_h264_qpel ## SIZE ## _hv_lowpass_ ## MMX(halfHV, halfV, src, SIZE, stride);\
++    ff_ ## OPNAME ## h264_qpel ## SIZE ## _h_lowpass_l2_ ## MMX(dst, src+stride, halfHV, stride, SIZE);\
++}\
++\
++static void OPNAME ## h264_qpel ## SIZE ## _mc12_ ## MMX(uint8_t *dst, const uint8_t *src, ptrdiff_t stride)\
++{\
++    LOCAL_ALIGNED(ALIGN, uint8_t, temp, [SIZE*(SIZE<8?12:24)*2 + SIZE*SIZE]);\
++    uint8_t * const halfHV= temp;\
++    int16_t * const halfV= (int16_t*)(temp + SIZE*SIZE);\
++    av_assert2(((uintptr_t)temp & 7) == 0);\
++    put_h264_qpel ## SIZE ## _hv_lowpass_ ## MMX(halfHV, halfV, src, SIZE, stride);\
++    ff_ ## OPNAME ## pixels ## SIZE ## _l2_shift5_ ## SHIFT5_EXT(dst, halfV+2, halfHV, stride);\
++}\
++\
++static void OPNAME ## h264_qpel ## SIZE ## _mc32_ ## MMX(uint8_t *dst, const uint8_t *src, ptrdiff_t stride)\
++{\
++    LOCAL_ALIGNED(ALIGN, uint8_t, temp, [SIZE*(SIZE<8?12:24)*2 + SIZE*SIZE]);\
++    uint8_t * const halfHV= temp;\
++    int16_t * const halfV= (int16_t*)(temp + SIZE*SIZE);\
++    av_assert2(((uintptr_t)temp & 7) == 0);\
++    put_h264_qpel ## SIZE ## _hv_lowpass_ ## MMX(halfHV, halfV, src, SIZE, stride);\
++    ff_ ## OPNAME ## pixels ## SIZE ## _l2_shift5_ ## SHIFT5_EXT(dst, halfV+3, halfHV, stride);\
++}\
++
++#define ff_put_h264_qpel16_h_lowpass_l2_avx2 ff_put_h264_qpel16_h_lowpass_l2_ssse3
++#define ff_avg_h264_qpel16_h_lowpass_l2_avx2 ff_avg_h264_qpel16_h_lowpass_l2_ssse3
++H264_MC_HALF_HV(put_, 16, avx2, 16, sse2)
++H264_MC_HALF_HV(avg_, 16, avx2, 16, sse2)
++#endif
+ 
+ #define H264_MC(QPEL, SIZE, MMX, ALIGN, SHIFT5_EXT)\
+ QPEL(put_, SIZE, MMX, ALIGN, SHIFT5_EXT) \
+@@ -491,6 +559,16 @@
+ 
+ #if ARCH_X86_64
+     if (bit_depth == 8 && EXTERNAL_AVX2_FAST(cpu_flags)) {
++        c->put_h264_qpel_pixels_tab[0][6] = put_h264_qpel16_mc21_avx2;
++        c->put_h264_qpel_pixels_tab[0][9] = put_h264_qpel16_mc12_avx2;
++        c->put_h264_qpel_pixels_tab[0][10] = put_h264_qpel16_mc22_avx2;
++        c->put_h264_qpel_pixels_tab[0][11] = put_h264_qpel16_mc32_avx2;
++        c->put_h264_qpel_pixels_tab[0][14] = put_h264_qpel16_mc23_avx2;
++        c->avg_h264_qpel_pixels_tab[0][6] = avg_h264_qpel16_mc21_avx2;
++        c->avg_h264_qpel_pixels_tab[0][9] = avg_h264_qpel16_mc12_avx2;
++        c->avg_h264_qpel_pixels_tab[0][10] = avg_h264_qpel16_mc22_avx2;
++        c->avg_h264_qpel_pixels_tab[0][11] = avg_h264_qpel16_mc32_avx2;
++        c->avg_h264_qpel_pixels_tab[0][14] = avg_h264_qpel16_mc23_avx2;
+         c->put_h264_qpel_pixels_tab[0][5] = ff_put_h264_qpel16_mc11_avx2;
+         c->put_h264_qpel_pixels_tab[0][7] = ff_put_h264_qpel16_mc31_avx2;
+         c->put_h264_qpel_pixels_tab[0][13] = ff_put_h264_qpel16_mc13_avx2;
+--- a/libavcodec/x86/h264_qpel_8bit.asm
++++ b/libavcodec/x86/h264_qpel_8bit.asm
+@@ -1153,3 +1153,39 @@
+ QPEL16_H_LOWPASS_L2_OP put
+ QPEL16_H_LOWPASS_L2_OP avg
+ %endif
++
++%if ARCH_X86_64
++; Second separable half-pel pass, sixteen columns at once.
++%macro QPEL16_HV2_AVX2 1
++INIT_YMM avx2
++cglobal %1_h264_qpel16_hv2_lowpass, 3,4,6
++    mov          r3d, 16
++.loop:
++    movu         m0, [r1]
++    movu         m1, [r1+2]
++    movu         m2, [r1+4]
++    paddw        m0, [r1+10]
++    paddw        m1, [r1+8]
++    paddw        m2, [r1+6]
++    psubw        m0, m1
++    psraw        m0, 2
++    psubw        m0, m1
++    paddsw       m0, m2
++    psraw        m0, 2
++    paddw        m0, m2
++    psraw        m0, 6
++    vextracti128 xm1, m0, 1
++    packuswb     xm0, xm0, xm1
++%ifidn %1, avg
++    pavgb        xm0, xm0, [r0]
++%endif
++    mova         [r0], xm0
++    add          r1, 48
++    add          r0, r2
++    dec          r3d
++    jnz          .loop
++    RET
++%endmacro
++QPEL16_HV2_AVX2 put
++QPEL16_HV2_AVX2 avg
++%endif
