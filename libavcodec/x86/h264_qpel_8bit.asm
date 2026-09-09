@@ -29,7 +29,69 @@ cextern pw_16
 cextern pw_5
 cextern pb_0
 
+SECTION_RODATA 32
+
+qpel_h01: times 2 db 0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8
+qpel_h23: times 2 db 2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10
+qpel_h45: times 2 db 4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12
+qpel_c01: times 16 db 1,-5
+qpel_c23: times 32 db 20
+qpel_c45: times 16 db -5,1
+
 SECTION .text
+
+%if ARCH_X86_64
+; Each lane filters eight adjacent outputs. The two source loads cover the
+; same 24-byte span as the existing pair of eight-pixel filters.
+%macro QPEL16_H_AVX2 2
+INIT_YMM avx2
+cglobal %1_h264_qpel16_mc%{2}0, 3, 4, 10
+    mov          r3d, 16
+    vpbroadcastw m3, [pw_16]
+    mova         m4, [qpel_h01]
+    mova         m5, [qpel_h23]
+    mova         m6, [qpel_h45]
+    mova         m7, [qpel_c01]
+    mova         m8, [qpel_c23]
+    mova         m9, [qpel_c45]
+.loop:
+    movu         xm0, [r1-2]
+    vinserti128  m0, m0, [r1+6], 1
+    pshufb       m1, m0, m4
+    pshufb       m2, m0, m5
+    pmaddubsw    m1, m7
+    pmaddubsw    m2, m8
+    pshufb       m0, m6
+    paddw        m1, m2
+    pmaddubsw    m0, m9
+    paddw        m1, m0
+    paddw        m1, m3
+    psraw        m1, 5
+    vextracti128 xm2, m1, 1
+    packuswb     xm1, xm2
+%if %2 == 1
+    pavgb        xm1, [r1]
+%elif %2 == 3
+    pavgb        xm1, [r1+1]
+%endif
+%ifidn %1, avg
+    pavgb        xm1, [r0]
+%endif
+    movu         [r0], xm1
+    add          r0, r2
+    add          r1, r2
+    dec          r3d
+    jnz .loop
+    RET
+%endmacro
+
+QPEL16_H_AVX2 put, 1
+QPEL16_H_AVX2 put, 2
+QPEL16_H_AVX2 put, 3
+QPEL16_H_AVX2 avg, 1
+QPEL16_H_AVX2 avg, 2
+QPEL16_H_AVX2 avg, 3
+%endif
 
 ; Full-width 8-bit vertical interpolation, with quarter-pel averaging fused.
 ; Six-tap filter: (a - 5*b + 20*c + 20*d - 5*e + f + 16) >> 5.
