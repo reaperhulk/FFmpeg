@@ -1289,7 +1289,7 @@ static av_always_inline uint16_t pack8to16(unsigned a, unsigned b)
 #endif
 }
 
-static int decode_cabac_field_decoding_flag(const H264Context *h, H264SliceContext *sl)
+static av_always_inline int decode_cabac_field_decoding_flag(const H264Context *h, H264SliceContext *sl)
 {
     const int mbb_xy = sl->mb_xy - 2*h->mb_stride;
 
@@ -1298,10 +1298,10 @@ static int decode_cabac_field_decoding_flag(const H264Context *h, H264SliceConte
     ctx += sl->mb_field_decoding_flag & !!sl->mb_x; //for FMO:(s->current_picture.mb_type[mba_xy] >> 7) & (h->slice_table[mba_xy] == h->slice_num);
     ctx += (h->cur_pic.mb_type[mbb_xy] >> 7) & (h->slice_table[mbb_xy] == sl->slice_num);
 
-    return get_cabac_noinline( &sl->cabac, &(sl->cabac_state+70)[ctx] );
+    return get_cabac_inline( &sl->cabac, &(sl->cabac_state+70)[ctx] );
 }
 
-static int decode_cabac_intra_mb_type(H264SliceContext *sl,
+static av_always_inline int decode_cabac_intra_mb_type(H264SliceContext *sl,
                                       int ctx_base, int intra_slice)
 {
     uint8_t *state= &sl->cabac_state[ctx_base];
@@ -1313,11 +1313,11 @@ static int decode_cabac_intra_mb_type(H264SliceContext *sl,
             ctx++;
         if (sl->top_type        & (MB_TYPE_INTRA16x16|MB_TYPE_INTRA_PCM))
             ctx++;
-        if( get_cabac_noinline( &sl->cabac, &state[ctx] ) == 0 )
+        if( get_cabac_inline( &sl->cabac, &state[ctx] ) == 0 )
             return 0;   /* I4x4 */
         state += 2;
     }else{
-        if( get_cabac_noinline( &sl->cabac, state ) == 0 )
+        if( get_cabac_inline( &sl->cabac, state ) == 0 )
             return 0;   /* I4x4 */
     }
 
@@ -1325,15 +1325,15 @@ static int decode_cabac_intra_mb_type(H264SliceContext *sl,
         return 25;  /* PCM */
 
     mb_type = 1; /* I16x16 */
-    mb_type += 12 * get_cabac_noinline( &sl->cabac, &state[1] ); /* cbp_luma != 0 */
-    if( get_cabac_noinline( &sl->cabac, &state[2] ) ) /* cbp_chroma */
-        mb_type += 4 + 4 * get_cabac_noinline( &sl->cabac, &state[2+intra_slice] );
-    mb_type += 2 * get_cabac_noinline( &sl->cabac, &state[3+intra_slice] );
-    mb_type += 1 * get_cabac_noinline( &sl->cabac, &state[3+2*intra_slice] );
+    mb_type += 12 * get_cabac_inline( &sl->cabac, &state[1] ); /* cbp_luma != 0 */
+    if( get_cabac_inline( &sl->cabac, &state[2] ) ) /* cbp_chroma */
+        mb_type += 4 + 4 * get_cabac_inline( &sl->cabac, &state[2+intra_slice] );
+    mb_type += 2 * get_cabac_inline( &sl->cabac, &state[3+intra_slice] );
+    mb_type += 1 * get_cabac_inline( &sl->cabac, &state[3+2*intra_slice] );
     return mb_type;
 }
 
-static int decode_cabac_mb_skip(const H264Context *h, H264SliceContext *sl,
+static av_always_inline int decode_cabac_mb_skip(const H264Context *h, H264SliceContext *sl,
                                 int mb_x, int mb_y)
 {
     int mba_xy, mbb_xy;
@@ -1367,24 +1367,24 @@ static int decode_cabac_mb_skip(const H264Context *h, H264SliceContext *sl,
 
     if (sl->slice_type_nos == AV_PICTURE_TYPE_B)
         ctx += 13;
-    return get_cabac_noinline( &sl->cabac, &sl->cabac_state[11+ctx] );
+    return get_cabac_inline( &sl->cabac, &sl->cabac_state[11+ctx] );
 }
 
-static int decode_cabac_mb_intra4x4_pred_mode(H264SliceContext *sl, int pred_mode)
+static av_always_inline int decode_cabac_mb_intra4x4_pred_mode(H264SliceContext *sl, int pred_mode)
 {
     int mode = 0;
 
-    if( get_cabac( &sl->cabac, &sl->cabac_state[68] ) )
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[68] ) )
         return pred_mode;
 
-    mode += 1 * get_cabac( &sl->cabac, &sl->cabac_state[69] );
-    mode += 2 * get_cabac( &sl->cabac, &sl->cabac_state[69] );
-    mode += 4 * get_cabac( &sl->cabac, &sl->cabac_state[69] );
+    mode += 1 * get_cabac_inline( &sl->cabac, &sl->cabac_state[69] );
+    mode += 2 * get_cabac_inline( &sl->cabac, &sl->cabac_state[69] );
+    mode += 4 * get_cabac_inline( &sl->cabac, &sl->cabac_state[69] );
 
     return mode + ( mode >= pred_mode );
 }
 
-static int decode_cabac_mb_chroma_pre_mode(const H264Context *h, H264SliceContext *sl)
+static av_always_inline int decode_cabac_mb_chroma_pre_mode(const H264Context *h, H264SliceContext *sl)
 {
     const int mba_xy = sl->left_mb_xy[0];
     const int mbb_xy = sl->top_mb_xy;
@@ -1398,18 +1398,18 @@ static int decode_cabac_mb_chroma_pre_mode(const H264Context *h, H264SliceContex
     if (sl->top_type        && h->chroma_pred_mode_table[mbb_xy] != 0)
         ctx++;
 
-    if( get_cabac_noinline( &sl->cabac, &sl->cabac_state[64+ctx] ) == 0 )
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[64+ctx] ) == 0 )
         return 0;
 
-    if( get_cabac_noinline( &sl->cabac, &sl->cabac_state[64+3] ) == 0 )
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[64+3] ) == 0 )
         return 1;
-    if( get_cabac_noinline( &sl->cabac, &sl->cabac_state[64+3] ) == 0 )
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[64+3] ) == 0 )
         return 2;
     else
         return 3;
 }
 
-static int decode_cabac_mb_cbp_luma(H264SliceContext *sl)
+static av_always_inline int decode_cabac_mb_cbp_luma(H264SliceContext *sl)
 {
     int cbp_b, cbp_a, ctx, cbp = 0;
 
@@ -1417,16 +1417,16 @@ static int decode_cabac_mb_cbp_luma(H264SliceContext *sl)
     cbp_b = sl->top_cbp;
 
     ctx = !(cbp_a & 0x02) + 2 * !(cbp_b & 0x04);
-    cbp += get_cabac_noinline(&sl->cabac, &sl->cabac_state[73 + ctx]);
+    cbp += get_cabac_inline(&sl->cabac, &sl->cabac_state[73 + ctx]);
     ctx = !(cbp   & 0x01) + 2 * !(cbp_b & 0x08);
-    cbp += get_cabac_noinline(&sl->cabac, &sl->cabac_state[73 + ctx]) << 1;
+    cbp += get_cabac_inline(&sl->cabac, &sl->cabac_state[73 + ctx]) << 1;
     ctx = !(cbp_a & 0x08) + 2 * !(cbp   & 0x01);
-    cbp += get_cabac_noinline(&sl->cabac, &sl->cabac_state[73 + ctx]) << 2;
+    cbp += get_cabac_inline(&sl->cabac, &sl->cabac_state[73 + ctx]) << 2;
     ctx = !(cbp   & 0x04) + 2 * !(cbp   & 0x02);
-    cbp += get_cabac_noinline(&sl->cabac, &sl->cabac_state[73 + ctx]) << 3;
+    cbp += get_cabac_inline(&sl->cabac, &sl->cabac_state[73 + ctx]) << 3;
     return cbp;
 }
-static int decode_cabac_mb_cbp_chroma(H264SliceContext *sl)
+static av_always_inline int decode_cabac_mb_cbp_chroma(H264SliceContext *sl)
 {
     int ctx;
     int cbp_a, cbp_b;
@@ -1437,44 +1437,44 @@ static int decode_cabac_mb_cbp_chroma(H264SliceContext *sl)
     ctx = 0;
     if( cbp_a > 0 ) ctx++;
     if( cbp_b > 0 ) ctx += 2;
-    if( get_cabac_noinline( &sl->cabac, &sl->cabac_state[77 + ctx] ) == 0 )
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[77 + ctx] ) == 0 )
         return 0;
 
     ctx = 4;
     if( cbp_a == 2 ) ctx++;
     if( cbp_b == 2 ) ctx += 2;
-    return 1 + get_cabac_noinline( &sl->cabac, &sl->cabac_state[77 + ctx] );
+    return 1 + get_cabac_inline( &sl->cabac, &sl->cabac_state[77 + ctx] );
 }
 
-static int decode_cabac_p_mb_sub_type(H264SliceContext *sl)
+static av_always_inline int decode_cabac_p_mb_sub_type(H264SliceContext *sl)
 {
-    if( get_cabac( &sl->cabac, &sl->cabac_state[21] ) )
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[21] ) )
         return 0;   /* 8x8 */
-    if( !get_cabac( &sl->cabac, &sl->cabac_state[22] ) )
+    if( !get_cabac_inline( &sl->cabac, &sl->cabac_state[22] ) )
         return 1;   /* 8x4 */
-    if( get_cabac( &sl->cabac, &sl->cabac_state[23] ) )
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[23] ) )
         return 2;   /* 4x8 */
     return 3;       /* 4x4 */
 }
-static int decode_cabac_b_mb_sub_type(H264SliceContext *sl)
+static av_always_inline int decode_cabac_b_mb_sub_type(H264SliceContext *sl)
 {
     int type;
-    if( !get_cabac( &sl->cabac, &sl->cabac_state[36] ) )
+    if( !get_cabac_inline( &sl->cabac, &sl->cabac_state[36] ) )
         return 0;   /* B_Direct_8x8 */
-    if( !get_cabac( &sl->cabac, &sl->cabac_state[37] ) )
-        return 1 + get_cabac( &sl->cabac, &sl->cabac_state[39] ); /* B_L0_8x8, B_L1_8x8 */
+    if( !get_cabac_inline( &sl->cabac, &sl->cabac_state[37] ) )
+        return 1 + get_cabac_inline( &sl->cabac, &sl->cabac_state[39] ); /* B_L0_8x8, B_L1_8x8 */
     type = 3;
-    if( get_cabac( &sl->cabac, &sl->cabac_state[38] ) ) {
-        if( get_cabac( &sl->cabac, &sl->cabac_state[39] ) )
-            return 11 + get_cabac( &sl->cabac, &sl->cabac_state[39] ); /* B_L1_4x4, B_Bi_4x4 */
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[38] ) ) {
+        if( get_cabac_inline( &sl->cabac, &sl->cabac_state[39] ) )
+            return 11 + get_cabac_inline( &sl->cabac, &sl->cabac_state[39] ); /* B_L1_4x4, B_Bi_4x4 */
         type += 4;
     }
-    type += 2*get_cabac( &sl->cabac, &sl->cabac_state[39] );
-    type +=   get_cabac( &sl->cabac, &sl->cabac_state[39] );
+    type += 2*get_cabac_inline( &sl->cabac, &sl->cabac_state[39] );
+    type +=   get_cabac_inline( &sl->cabac, &sl->cabac_state[39] );
     return type;
 }
 
-static int decode_cabac_mb_ref(H264SliceContext *sl, int list, int n)
+static av_always_inline int decode_cabac_mb_ref(H264SliceContext *sl, int list, int n)
 {
     int refa = sl->ref_cache[list][scan8[n] - 1];
     int refb = sl->ref_cache[list][scan8[n] - 8];
@@ -1493,7 +1493,7 @@ static int decode_cabac_mb_ref(H264SliceContext *sl, int list, int n)
             ctx += 2;
     }
 
-    while( get_cabac( &sl->cabac, &sl->cabac_state[54+ctx] ) ) {
+    while( get_cabac_inline( &sl->cabac, &sl->cabac_state[54+ctx] ) ) {
         ref++;
         ctx = (ctx>>2)+4;
         if(ref >= 32 /*h->ref_list[list]*/){
@@ -1503,19 +1503,19 @@ static int decode_cabac_mb_ref(H264SliceContext *sl, int list, int n)
     return ref;
 }
 
-static int decode_cabac_mb_mvd(H264SliceContext *sl, int ctxbase, int amvd, int *mvda)
+static av_always_inline int decode_cabac_mb_mvd(H264SliceContext *sl, int ctxbase, int amvd, int *mvda)
 {
     int mvd;
 
-    if(!get_cabac(&sl->cabac, &sl->cabac_state[ctxbase+((amvd-3)>>(INT_BIT-1))+((amvd-33)>>(INT_BIT-1))+2])){
-//    if(!get_cabac(&sl->cabac, &sl->cabac_state[ctxbase+(amvd>2)+(amvd>32)])){
+    if(!get_cabac_inline(&sl->cabac, &sl->cabac_state[ctxbase+((amvd-3)>>(INT_BIT-1))+((amvd-33)>>(INT_BIT-1))+2])){
+//    if(!get_cabac_inline(&sl->cabac, &sl->cabac_state[ctxbase+(amvd>2)+(amvd>32)])){
         *mvda= 0;
         return 0;
     }
 
     mvd= 1;
     ctxbase+= 3;
-    while( mvd < 9 && get_cabac( &sl->cabac, &sl->cabac_state[ctxbase] ) ) {
+    while( mvd < 9 && get_cabac_inline( &sl->cabac, &sl->cabac_state[ctxbase] ) ) {
         if( mvd < 4 )
             ctxbase++;
         mvd++;
@@ -1682,10 +1682,10 @@ decode_cabac_residual_internal(const H264Context *h, H264SliceContext *sl,
 #define DECODE_SIGNIFICANCE( coefs, sig_off, last_off ) \
         for(last= 0; last < coefs; last++) { \
             uint8_t *sig_ctx = significant_coeff_ctx_base + sig_off; \
-            if( get_cabac( CC, sig_ctx )) { \
+            if( get_cabac_inline( CC, sig_ctx )) { \
                 uint8_t *last_ctx = last_coeff_ctx_base + last_off; \
                 index[coeff_count++] = last; \
-                if( get_cabac( CC, last_ctx ) ) { \
+                if( get_cabac_inline( CC, last_ctx ) ) { \
                     last= max_coeff; \
                     break; \
                 } \
@@ -1738,7 +1738,7 @@ decode_cabac_residual_internal(const H264Context *h, H264SliceContext *sl,
  \
         int j= scantable[index[--coeff_count]]; \
  \
-        if( get_cabac( CC, ctx ) == 0 ) { \
+        if( get_cabac_inline( CC, ctx ) == 0 ) { \
             node_ctx = coeff_abs_level_transition[0][node_ctx]; \
             if( is_dc ) { \
                 ((type*)block)[j] = get_cabac_bypass_sign( CC, -1); \
@@ -1750,7 +1750,7 @@ decode_cabac_residual_internal(const H264Context *h, H264SliceContext *sl,
             ctx = coeff_abs_levelgt1_ctx[is_dc && chroma422][node_ctx] + abs_level_m1_ctx_base; \
             node_ctx = coeff_abs_level_transition[1][node_ctx]; \
 \
-            while( coeff_abs < 15 && get_cabac( CC, ctx ) ) { \
+            while( coeff_abs < 15 && get_cabac_inline( CC, ctx ) ) { \
                 coeff_abs++; \
             } \
 \
@@ -1790,7 +1790,7 @@ out:
 
 }
 
-static av_noinline void decode_cabac_residual_dc_internal(const H264Context *h,
+static av_always_inline void decode_cabac_residual_dc_internal(const H264Context *h,
                                                           H264SliceContext *sl,
                                                           int16_t *block,
                                                           int cat, int n,
@@ -1800,7 +1800,7 @@ static av_noinline void decode_cabac_residual_dc_internal(const H264Context *h,
     decode_cabac_residual_internal(h, sl, block, cat, n, scantable, NULL, max_coeff, 1, 0);
 }
 
-static av_noinline void decode_cabac_residual_dc_internal_422(const H264Context *h,
+static av_always_inline void decode_cabac_residual_dc_internal_422(const H264Context *h,
                                                               H264SliceContext *sl,
                                                               int16_t *block,
                                                               int cat, int n,
@@ -1810,7 +1810,7 @@ static av_noinline void decode_cabac_residual_dc_internal_422(const H264Context 
     decode_cabac_residual_internal(h, sl, block, cat, n, scantable, NULL, max_coeff, 1, 1);
 }
 
-static av_noinline void decode_cabac_residual_nondc_internal(const H264Context *h,
+static av_always_inline void decode_cabac_residual_nondc_internal(const H264Context *h,
                                                              H264SliceContext *sl,
                                                              int16_t *block,
                                                              int cat, int n,
@@ -1841,7 +1841,7 @@ static av_always_inline void decode_cabac_residual_dc(const H264Context *h,
                                                       int max_coeff)
 {
     /* read coded block flag */
-    if( get_cabac( &sl->cabac, &sl->cabac_state[get_cabac_cbf_ctx(sl, cat, n, max_coeff, 1)]) == 0 ) {
+    if( get_cabac_inline( &sl->cabac, &sl->cabac_state[get_cabac_cbf_ctx(sl, cat, n, max_coeff, 1)]) == 0 ) {
         sl->non_zero_count_cache[scan8[n]] = 0;
         return;
     }
@@ -1855,7 +1855,7 @@ decode_cabac_residual_dc_422(const H264Context *h, H264SliceContext *sl,
                              int max_coeff)
 {
     /* read coded block flag */
-    if (get_cabac(&sl->cabac, &sl->cabac_state[get_cabac_cbf_ctx(sl, cat, n, max_coeff, 1)]) == 0) {
+    if (get_cabac_inline(&sl->cabac, &sl->cabac_state[get_cabac_cbf_ctx(sl, cat, n, max_coeff, 1)]) == 0) {
         sl->non_zero_count_cache[scan8[n]] = 0;
         return;
     }
@@ -1871,7 +1871,7 @@ static av_always_inline void decode_cabac_residual_nondc(const H264Context *h,
                                                          int max_coeff)
 {
     /* read coded block flag */
-    if( (cat != 5 || CHROMA444(h)) && get_cabac( &sl->cabac, &sl->cabac_state[get_cabac_cbf_ctx(sl, cat, n, max_coeff, 0)]) == 0) {
+    if( (cat != 5 || CHROMA444(h)) && get_cabac_inline( &sl->cabac, &sl->cabac_state[get_cabac_cbf_ctx(sl, cat, n, max_coeff, 0)]) == 0) {
         if( max_coeff == 64 ) {
             fill_rectangle(&sl->non_zero_count_cache[scan8[n]], 2, 2, 8, 0, 1);
         } else {
@@ -1989,16 +1989,16 @@ int ff_h264_decode_mb_cabac(const H264Context *h, H264SliceContext *sl)
         if (!IS_DIRECT(sl->top_type - 1))
             ctx++;
 
-        if( !get_cabac_noinline( &sl->cabac, &sl->cabac_state[27+ctx] ) ){
+        if( !get_cabac_inline( &sl->cabac, &sl->cabac_state[27+ctx] ) ){
             mb_type= 0; /* B_Direct_16x16 */
-        }else if( !get_cabac_noinline( &sl->cabac, &sl->cabac_state[27+3] ) ) {
-            mb_type= 1 + get_cabac_noinline( &sl->cabac, &sl->cabac_state[27+5] ); /* B_L[01]_16x16 */
+        }else if( !get_cabac_inline( &sl->cabac, &sl->cabac_state[27+3] ) ) {
+            mb_type= 1 + get_cabac_inline( &sl->cabac, &sl->cabac_state[27+5] ); /* B_L[01]_16x16 */
         }else{
             int bits;
-            bits = get_cabac_noinline( &sl->cabac, &sl->cabac_state[27+4] ) << 3;
-            bits+= get_cabac_noinline( &sl->cabac, &sl->cabac_state[27+5] ) << 2;
-            bits+= get_cabac_noinline( &sl->cabac, &sl->cabac_state[27+5] ) << 1;
-            bits+= get_cabac_noinline( &sl->cabac, &sl->cabac_state[27+5] );
+            bits = get_cabac_inline( &sl->cabac, &sl->cabac_state[27+4] ) << 3;
+            bits+= get_cabac_inline( &sl->cabac, &sl->cabac_state[27+5] ) << 2;
+            bits+= get_cabac_inline( &sl->cabac, &sl->cabac_state[27+5] ) << 1;
+            bits+= get_cabac_inline( &sl->cabac, &sl->cabac_state[27+5] );
             if( bits < 8 ){
                 mb_type= bits + 3; /* B_Bi_16x16 through B_L1_L0_16x8 */
             }else if( bits == 13 ){
@@ -2009,21 +2009,21 @@ int ff_h264_decode_mb_cabac(const H264Context *h, H264SliceContext *sl)
             }else if( bits == 15 ){
                 mb_type= 22; /* B_8x8 */
             }else{
-                bits= ( bits<<1 ) + get_cabac_noinline( &sl->cabac, &sl->cabac_state[27+5] );
+                bits= ( bits<<1 ) + get_cabac_inline( &sl->cabac, &sl->cabac_state[27+5] );
                 mb_type= bits - 4; /* B_L0_Bi_* through B_Bi_Bi_* */
             }
         }
             partition_count = ff_h264_b_mb_type_info[mb_type].partition_count;
             mb_type         = ff_h264_b_mb_type_info[mb_type].type;
     } else if (sl->slice_type_nos == AV_PICTURE_TYPE_P) {
-        if( get_cabac_noinline( &sl->cabac, &sl->cabac_state[14] ) == 0 ) {
+        if( get_cabac_inline( &sl->cabac, &sl->cabac_state[14] ) == 0 ) {
             /* P-type */
-            if( get_cabac_noinline( &sl->cabac, &sl->cabac_state[15] ) == 0 ) {
+            if( get_cabac_inline( &sl->cabac, &sl->cabac_state[15] ) == 0 ) {
                 /* P_L0_D16x16, P_8x8 */
-                mb_type= 3 * get_cabac_noinline( &sl->cabac, &sl->cabac_state[16] );
+                mb_type= 3 * get_cabac_inline( &sl->cabac, &sl->cabac_state[16] );
             } else {
                 /* P_L0_D8x16, P_L0_D16x8 */
-                mb_type= 2 - get_cabac_noinline( &sl->cabac, &sl->cabac_state[17] );
+                mb_type= 2 - get_cabac_inline( &sl->cabac, &sl->cabac_state[17] );
             }
             partition_count = ff_h264_p_mb_type_info[mb_type].partition_count;
             mb_type         = ff_h264_p_mb_type_info[mb_type].type;
@@ -2089,7 +2089,7 @@ decode_intra_mb:
     if( IS_INTRA( mb_type ) ) {
         int i, pred_mode;
         if( IS_INTRA4x4( mb_type ) ) {
-            if (dct8x8_allowed && get_cabac_noinline(&sl->cabac, &sl->cabac_state[399 + sl->neighbor_transform_size])) {
+            if (dct8x8_allowed && get_cabac_inline(&sl->cabac, &sl->cabac_state[399 + sl->neighbor_transform_size])) {
                 mb_type |= MB_TYPE_8x8DCT;
                 for( i = 0; i < 16; i+=4 ) {
                     int pred = pred_intra_mode(h, sl, i);
@@ -2360,7 +2360,7 @@ decode_intra_mb:
     h->cbp_table[mb_xy] = sl->cbp = cbp;
 
     if( dct8x8_allowed && (cbp&15) && !IS_INTRA( mb_type ) ) {
-        mb_type |= MB_TYPE_8x8DCT * get_cabac_noinline(&sl->cabac, &sl->cabac_state[399 + sl->neighbor_transform_size]);
+        mb_type |= MB_TYPE_8x8DCT * get_cabac_inline(&sl->cabac, &sl->cabac_state[399 + sl->neighbor_transform_size]);
     }
 
     /* It would be better to do this in fill_decode_caches, but we don't know
@@ -2411,12 +2411,12 @@ decode_intra_mb:
         const uint32_t *qmul;
 
         // decode_cabac_mb_dqp
-        if(get_cabac_noinline( &sl->cabac, &sl->cabac_state[60 + (sl->last_qscale_diff != 0)])){
+        if(get_cabac_inline( &sl->cabac, &sl->cabac_state[60 + (sl->last_qscale_diff != 0)])){
             int val = 1;
             int ctx= 2;
             const int max_qp = 51 + 6*(sps->bit_depth_luma-8);
 
-            while( get_cabac_noinline( &sl->cabac, &sl->cabac_state[60 + ctx] ) ) {
+            while( get_cabac_inline( &sl->cabac, &sl->cabac_state[60 + ctx] ) ) {
                 ctx= 3;
                 val++;
                 if(val > 2*max_qp){ //prevent infinite loop
