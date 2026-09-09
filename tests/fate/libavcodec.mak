@@ -28,6 +28,11 @@ fate-cabac: libavcodec/tests/cabac$(EXESUF)
 fate-cabac: CMD = run libavcodec/tests/cabac$(EXESUF)
 fate-cabac: CMP = null
 
+FATE_LIBAVCODEC-$(CONFIG_H264_DECODER) += fate-h264-cabac
+fate-h264-cabac: libavcodec/tests/h264_cabac$(EXESUF)
+fate-h264-cabac: CMD = run libavcodec/tests/h264_cabac$(EXESUF)
+fate-h264-cabac: CMP = null
+
 FATE_LIBAVCODEC-$(CONFIG_CELP_MATH) += fate-celp_math
 fate-celp_math: libavcodec/tests/celp_math$(EXESUF)
 fate-celp_math: CMD = run libavcodec/tests/celp_math$(EXESUF)
