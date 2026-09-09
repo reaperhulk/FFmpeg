@@ -41,6 +41,21 @@ static int drain(AVCodecContext *ctx, AVFrame *frame)
     return frames;
 }
 
+/* A stable profiling boundary: Callgrind can collect only this function
+ * and its callees, excluding stream probing and decoder setup. */
+av_noinline int64_t h264_bench_decode_cached(AVCodecContext *ctx, AVFrame *frame,
+                                            AVPacket **packets, int count)
+{
+    int64_t frames = 0;
+    avcodec_flush_buffers(ctx);
+    for (int i = 0; i < count; i++) {
+        check(avcodec_send_packet(ctx, packets[i]));
+        frames += drain(ctx, frame);
+    }
+    check(avcodec_send_packet(ctx, NULL));
+    return frames + drain(ctx, frame);
+}
+
 int main(int argc, char **argv)
 {
     AVFormatContext *fmt = NULL;
@@ -90,15 +105,8 @@ int main(int argc, char **argv)
         int64_t frames = 0;
         double cpu = seconds(CLOCK_PROCESS_CPUTIME_ID);
         double wall = seconds(CLOCK_MONOTONIC);
-        for (int loop = 0; loop < loops; loop++) {
-            avcodec_flush_buffers(ctx);
-            for (int i = 0; i < count; i++) {
-                check(avcodec_send_packet(ctx, packets[i]));
-                frames += drain(ctx, frame);
-            }
-            check(avcodec_send_packet(ctx, NULL));
-            frames += drain(ctx, frame);
-        }
+        for (int loop = 0; loop < loops; loop++)
+            frames += h264_bench_decode_cached(ctx, frame, packets, count);
         wall = seconds(CLOCK_MONOTONIC) - wall;
         cpu = seconds(CLOCK_PROCESS_CPUTIME_ID) - cpu;
         printf("%d,%" PRId64 ",%.9f,%.9f\n", run, frames, cpu, wall);
