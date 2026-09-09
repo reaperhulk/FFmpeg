@@ -594,9 +594,9 @@ static av_always_inline void backup_mb_border(const H264Context *h, H264SliceCon
 {
     uint8_t *top_border;
     int top_idx = 1;
-    const int pixel_shift = h->pixel_shift;
-    int chroma444 = CHROMA444(h);
-    int chroma422 = CHROMA422(h);
+    const int pixel_shift = simple ? 0 : h->pixel_shift;
+    int chroma444 = !simple && CHROMA444(h);
+    int chroma422 = !simple && CHROMA422(h);
 
     src_y  -= linesize;
     src_cb -= uvlinesize;
@@ -609,7 +609,7 @@ static av_always_inline void backup_mb_border(const H264Context *h, H264SliceCon
                 AV_COPY128(top_border, src_y + 15 * linesize);
                 if (pixel_shift)
                     AV_COPY128(top_border + 16, src_y + 15 * linesize + 16);
-                if (simple || !CONFIG_GRAY || !(h->flags & AV_CODEC_FLAG_GRAY)) {
+                if (!CONFIG_GRAY || !(h->flags & AV_CODEC_FLAG_GRAY)) {
                     if (chroma444) {
                         if (pixel_shift) {
                             AV_COPY128(top_border + 32, src_cb + 15 * uvlinesize);
@@ -652,7 +652,7 @@ static av_always_inline void backup_mb_border(const H264Context *h, H264SliceCon
     if (pixel_shift)
         AV_COPY128(top_border + 16, src_y + 16 * linesize + 16);
 
-    if (simple || !CONFIG_GRAY || !(h->flags & AV_CODEC_FLAG_GRAY)) {
+    if (!CONFIG_GRAY || !(h->flags & AV_CODEC_FLAG_GRAY)) {
         if (chroma444) {
             if (pixel_shift) {
                 AV_COPY128(top_border + 32, src_cb + 16 * linesize);
@@ -2317,7 +2317,7 @@ static av_always_inline void fill_filter_caches_inter(const H264Context *h,
                                                       const int left_xy[LEFT_MBS],
                                                       int top_type,
                                                       const int left_type[LEFT_MBS],
-                                                      int mb_xy, int list)
+                                                      int mb_xy, int list, int simple)
 {
     int b_stride = h->b_stride;
     int16_t(*mv_dst)[2] = &sl->mv_cache[list][scan8[0]];
@@ -2326,7 +2326,7 @@ static av_always_inline void fill_filter_caches_inter(const H264Context *h,
         if (USES_LIST(top_type, list)) {
             const int b_xy  = h->mb2b_xy[top_xy] + 3 * b_stride;
             const int b8_xy = 4 * top_xy + 2;
-            const int *ref2frm = &h->ref2frm[h->slice_table[top_xy] & (MAX_SLICES - 1)][list][(MB_MBAFF(sl) ? 20 : 2)];
+            const int *ref2frm = &h->ref2frm[h->slice_table[top_xy] & (MAX_SLICES - 1)][list][(!simple && MB_MBAFF(sl) ? 20 : 2)];
             AV_COPY128(mv_dst - 1 * 8, h->cur_pic.motion_val[list][b_xy + 0]);
             ref_cache[0 - 1 * 8] =
             ref_cache[1 - 1 * 8] = ref2frm[h->cur_pic.ref_index[list][b8_xy + 0]];
@@ -2337,11 +2337,11 @@ static av_always_inline void fill_filter_caches_inter(const H264Context *h,
             AV_WN32A(&ref_cache[0 - 1 * 8], ((LIST_NOT_USED) & 0xFF) * 0x01010101u);
         }
 
-        if (!IS_INTERLACED(mb_type ^ left_type[LTOP])) {
+        if (simple || !IS_INTERLACED(mb_type ^ left_type[LTOP])) {
             if (USES_LIST(left_type[LTOP], list)) {
                 const int b_xy  = h->mb2b_xy[left_xy[LTOP]] + 3;
                 const int b8_xy = 4 * left_xy[LTOP] + 1;
-                const int *ref2frm = &h->ref2frm[h->slice_table[left_xy[LTOP]] & (MAX_SLICES - 1)][list][(MB_MBAFF(sl) ? 20 : 2)];
+                const int *ref2frm = &h->ref2frm[h->slice_table[left_xy[LTOP]] & (MAX_SLICES - 1)][list][(!simple && MB_MBAFF(sl) ? 20 : 2)];
                 AV_COPY32(mv_dst - 1 +  0, h->cur_pic.motion_val[list][b_xy + b_stride * 0]);
                 AV_COPY32(mv_dst - 1 +  8, h->cur_pic.motion_val[list][b_xy + b_stride * 1]);
                 AV_COPY32(mv_dst - 1 + 16, h->cur_pic.motion_val[list][b_xy + b_stride * 2]);
@@ -2374,7 +2374,7 @@ static av_always_inline void fill_filter_caches_inter(const H264Context *h,
 
     {
         const int8_t *ref = &h->cur_pic.ref_index[list][4 * mb_xy];
-        const int *ref2frm = &h->ref2frm[sl->slice_num & (MAX_SLICES - 1)][list][(MB_MBAFF(sl) ? 20 : 2)];
+        const int *ref2frm = &h->ref2frm[sl->slice_num & (MAX_SLICES - 1)][list][(!simple && MB_MBAFF(sl) ? 20 : 2)];
         uint32_t ref01 = (pack16to32(ref2frm[ref[0]], ref2frm[ref[1]]) & 0x00FF00FF) * 0x0101;
         uint32_t ref23 = (pack16to32(ref2frm[ref[2]], ref2frm[ref[3]]) & 0x00FF00FF) * 0x0101;
         AV_WN32A(&ref_cache[0 * 8], ref01);
@@ -2395,7 +2395,8 @@ static av_always_inline void fill_filter_caches_inter(const H264Context *h,
 /**
  * @return non zero if the loop filter can be skipped
  */
-static int fill_filter_caches(const H264Context *h, H264SliceContext *sl, int mb_type)
+static av_always_inline int fill_filter_caches(const H264Context *h, H264SliceContext *sl,
+                                               int mb_type, int simple)
 {
     const int mb_xy = sl->mb_xy;
     int top_xy, left_xy[LEFT_MBS];
@@ -2403,10 +2404,10 @@ static int fill_filter_caches(const H264Context *h, H264SliceContext *sl, int mb
     const uint8_t *nnz;
     uint8_t *nnz_cache;
 
-    top_xy = mb_xy - (h->mb_stride << MB_FIELD(sl));
+    top_xy = mb_xy - (h->mb_stride << (simple ? 0 : MB_FIELD(sl)));
 
     left_xy[LBOT] = left_xy[LTOP] = mb_xy - 1;
-    if (FRAME_MBAFF(h)) {
+    if (!simple && FRAME_MBAFF(h)) {
         const int left_mb_field_flag = IS_INTERLACED(h->cur_pic.mb_type[mb_xy - 1]);
         const int curr_mb_field_flag = IS_INTERLACED(mb_type);
         if (sl->mb_y & 1) {
@@ -2435,7 +2436,7 @@ static int fill_filter_caches(const H264Context *h, H264SliceContext *sl, int mb
              ((qp + h->cur_pic.qscale_table[left_xy[LTOP]] + 1) >> 1) <= qp_thresh) &&
             (top_xy < 0 ||
              ((qp + h->cur_pic.qscale_table[top_xy] + 1) >> 1) <= qp_thresh)) {
-            if (!FRAME_MBAFF(h))
+            if (simple || !FRAME_MBAFF(h))
                 return 1;
             if ((left_xy[LTOP] < 0 ||
                  ((qp + h->cur_pic.qscale_table[left_xy[LBOT]] + 1) >> 1) <= qp_thresh) &&
@@ -2467,10 +2468,10 @@ static int fill_filter_caches(const H264Context *h, H264SliceContext *sl, int mb
         return 0;
 
     fill_filter_caches_inter(h, sl, mb_type, top_xy, left_xy,
-                             top_type, left_type, mb_xy, 0);
+                             top_type, left_type, mb_xy, 0, simple);
     if (sl->list_count == 2)
         fill_filter_caches_inter(h, sl, mb_type, top_xy, left_xy,
-                                 top_type, left_type, mb_xy, 1);
+                                 top_type, left_type, mb_xy, 1, simple);
 
     nnz       = h->non_zero_count[mb_xy];
     nnz_cache = sl->non_zero_count_cache;
@@ -2495,7 +2496,7 @@ static int fill_filter_caches(const H264Context *h, H264SliceContext *sl, int mb
 
     /* CAVLC 8x8dct requires NNZ values for residual decoding that differ
      * from what the loop filter needs */
-    if (!CABAC(h) && h->ps.pps->transform_8x8_mode) {
+    if (!simple && !CABAC(h) && h->ps.pps->transform_8x8_mode) {
         if (IS_8x8DCT(top_type)) {
             nnz_cache[4 + 8 * 0] =
             nnz_cache[5 + 8 * 0] = (h->cbp_table[top_xy] & 0x4000) >> 12;
@@ -2537,26 +2538,29 @@ static int fill_filter_caches(const H264Context *h, H264SliceContext *sl, int mb
     return 0;
 }
 
-static void loop_filter(const H264Context *h, H264SliceContext *sl, int start_x, int end_x)
+/* simple selects progressive 8-bit 4:2:0 with CABAC. Keep the conditions
+ * constant through the border and cache helpers to avoid per-MB format tests. */
+static av_always_inline void loop_filter_internal(const H264Context *h, H264SliceContext *sl,
+                                                  int start_x, int end_x, int simple)
 {
     uint8_t *dest_y, *dest_cb, *dest_cr;
     int linesize, uvlinesize, mb_x, mb_y;
-    const int end_mb_y       = sl->mb_y + FRAME_MBAFF(h);
+    const int end_mb_y       = sl->mb_y + (!simple && FRAME_MBAFF(h));
     const int old_slice_type = sl->slice_type;
-    const int pixel_shift    = h->pixel_shift;
-    const int block_h        = 16 >> h->chroma_y_shift;
+    const int pixel_shift    = simple ? 0 : h->pixel_shift;
+    const int block_h        = simple ? 8 : 16 >> h->chroma_y_shift;
 
     if (h->postpone_filter)
         return;
 
     if (sl->deblocking_filter) {
         for (mb_x = start_x; mb_x < end_x; mb_x++)
-            for (mb_y = end_mb_y - FRAME_MBAFF(h); mb_y <= end_mb_y; mb_y++) {
+            for (mb_y = end_mb_y - (!simple && FRAME_MBAFF(h)); mb_y <= end_mb_y; mb_y++) {
                 int mb_xy, mb_type;
                 mb_xy         = sl->mb_xy = mb_x + mb_y * h->mb_stride;
                 mb_type       = h->cur_pic.mb_type[mb_xy];
 
-                if (FRAME_MBAFF(h))
+                if (!simple && FRAME_MBAFF(h))
                     sl->mb_mbaff               =
                     sl->mb_field_decoding_flag = !!IS_INTERLACED(mb_type);
 
@@ -2565,14 +2569,14 @@ static void loop_filter(const H264Context *h, H264SliceContext *sl, int start_x,
                 dest_y  = h->cur_pic.f->data[0] +
                           ((mb_x << pixel_shift) + mb_y * sl->linesize) * 16;
                 dest_cb = h->cur_pic.f->data[1] +
-                          (mb_x << pixel_shift) * (8 << CHROMA444(h)) +
+                          (mb_x << pixel_shift) * (8 << (!simple && CHROMA444(h))) +
                           mb_y * sl->uvlinesize * block_h;
                 dest_cr = h->cur_pic.f->data[2] +
-                          (mb_x << pixel_shift) * (8 << CHROMA444(h)) +
+                          (mb_x << pixel_shift) * (8 << (!simple && CHROMA444(h))) +
                           mb_y * sl->uvlinesize * block_h;
                 // FIXME simplify above
 
-                if (MB_FIELD(sl)) {
+                if (!simple && MB_FIELD(sl)) {
                     linesize   = sl->mb_linesize   = sl->linesize   * 2;
                     uvlinesize = sl->mb_uvlinesize = sl->uvlinesize * 2;
                     if (mb_y & 1) { // FIXME move out of this function?
@@ -2585,13 +2589,13 @@ static void loop_filter(const H264Context *h, H264SliceContext *sl, int start_x,
                     uvlinesize = sl->mb_uvlinesize = sl->uvlinesize;
                 }
                 backup_mb_border(h, sl, dest_y, dest_cb, dest_cr, linesize,
-                                 uvlinesize, 0);
-                if (fill_filter_caches(h, sl, mb_type))
+                                 uvlinesize, simple);
+                if (fill_filter_caches(h, sl, mb_type, simple))
                     continue;
                 sl->chroma_qp[0] = get_chroma_qp(h->ps.pps, 0, h->cur_pic.qscale_table[mb_xy]);
                 sl->chroma_qp[1] = get_chroma_qp(h->ps.pps, 1, h->cur_pic.qscale_table[mb_xy]);
 
-                if (FRAME_MBAFF(h)) {
+                if (!simple && FRAME_MBAFF(h)) {
                     ff_h264_filter_mb(h, sl, mb_x, mb_y, dest_y, dest_cb, dest_cr,
                                       linesize, uvlinesize);
                 } else {
@@ -2602,9 +2606,18 @@ static void loop_filter(const H264Context *h, H264SliceContext *sl, int start_x,
     }
     sl->slice_type  = old_slice_type;
     sl->mb_x         = end_x;
-    sl->mb_y         = end_mb_y - FRAME_MBAFF(h);
+    sl->mb_y         = end_mb_y - (!simple && FRAME_MBAFF(h));
     sl->chroma_qp[0] = get_chroma_qp(h->ps.pps, 0, sl->qscale);
     sl->chroma_qp[1] = get_chroma_qp(h->ps.pps, 1, sl->qscale);
+}
+
+static void loop_filter(const H264Context *h, H264SliceContext *sl, int start_x, int end_x)
+{
+    if (!CONFIG_SMALL && !h->pixel_shift && CHROMA(h) == 1 &&
+        !FIELD_OR_MBAFF_PICTURE(h) && CABAC(h))
+        loop_filter_internal(h, sl, start_x, end_x, 1);
+    else
+        loop_filter_internal(h, sl, start_x, end_x, 0);
 }
 
 static void predict_field_decoding_flag(const H264Context *h, H264SliceContext *sl)
