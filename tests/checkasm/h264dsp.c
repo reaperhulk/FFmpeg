@@ -528,6 +528,13 @@ static void check_weight(void)
                         int weight = (rnd() % 256) - 128;
                         int offset = (rnd() % 256) - 128;
 
+                        /* Default weight 128 is not reached by signed-byte
+                         * random weights. Also exercise the saturation ends. */
+                        if (i < 3) {
+                            log2_denom = 7;
+                            weight = i == 0 ? 128 : i == 1 ? -128 : 127;
+                            offset = i == 1 ? -128 : 127;
+                        }
                         memset(dst, 0, 32 * 32 * 2);
                         for (int y = 0; y < hgt; y++) {
                             for (int x = 0; x < w * SIZEOF_PIXEL; x += 4) {

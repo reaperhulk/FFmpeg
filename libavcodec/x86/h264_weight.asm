@@ -297,3 +297,37 @@ cglobal h264_biweight_8, 7, 8, 6
     dec        r3d
     jnz .nextrow
     RET
+
+; Process two 16-pixel rows in independent 128-bit lanes. Saturation before
+; the arithmetic shift matches the SSE2 implementation, including weight 128.
+%if ARCH_X86_64
+INIT_YMM avx2
+cglobal h264_weight_16, 6, 6, 6
+    lea          r5d, [r5*2+1]
+    movd         xm2, r3d
+    movd         xm5, r5d
+    pslld        xm5, xm2
+    psrld        xm5, 1
+    vpbroadcastw m5, xm5
+    movd         xm3, r4d
+    vpbroadcastw m3, xm3
+    pxor         m4, m4
+.nextrow:
+    movu         xm0, [r0]
+    vinserti128  m0, m0, [r0+r1], 1
+    punpckhbw    m1, m0, m4
+    punpcklbw    m0, m4
+    pmullw       m0, m3
+    pmullw       m1, m3
+    paddsw       m0, m5
+    paddsw       m1, m5
+    psraw        m0, xm2
+    psraw        m1, xm2
+    packuswb     m0, m1
+    movu         [r0], xm0
+    vextracti128 [r0+r1], m0, 1
+    lea          r0, [r0+r1*2]
+    sub          r2d, 2
+    jnz .nextrow
+    RET
+%endif

@@ -148,6 +148,7 @@ void ff_h264_biweight_ ## W ## _ ## OPT(uint8_t *dst, uint8_t *src,     \
 H264_BIWEIGHT_SSE(16)
 H264_BIWEIGHT_SSE(8)
 H264_BIWEIGHT_SSE(4)
+H264_WEIGHT(16, avx2)
 
 #define H264_WEIGHT_10(W, DEPTH, OPT)                                   \
 void ff_h264_weight_ ## W ## _ ## DEPTH ## _ ## OPT(uint8_t *dst,       \
@@ -262,6 +263,10 @@ av_cold void ff_h264dsp_init_x86(H264DSPContext *c, const int bit_depth,
             c->idct_add        = ff_h264_idct_add_8_avx;
             c->idct_dc_add     = ff_h264_idct_dc_add_8_avx;
         }
+#if ARCH_X86_64
+        if (EXTERNAL_AVX2_FAST(cpu_flags))
+            c->weight_pixels_tab[0] = ff_h264_weight_16_avx2;
+#endif
     } else if (bit_depth == 10) {
         if (EXTERNAL_MMXEXT(cpu_flags)) {
             c->idct_dc_add = ff_h264_idct_dc_add_10_mmxext;
