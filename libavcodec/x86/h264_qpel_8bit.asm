@@ -41,12 +41,12 @@ qpel_c45: times 16 db -5,1
 SECTION .text
 
 %if ARCH_X86_64
-; Each lane filters eight adjacent outputs. The two source loads cover the
-; same 24-byte span as the existing pair of eight-pixel filters.
-%macro QPEL16_H_AVX2 2
+; Each lane filters eight adjacent outputs: two halves of a 16-pixel row
+; or two separate 8-pixel rows. Average directly into the destination.
+%macro QPEL_H_AVX2 3 ; operation, width, horizontal fraction
 INIT_YMM avx2
-cglobal %1_h264_qpel16_mc%{2}0, 3, 4, 10
-    mov          r3d, 16
+cglobal %1_h264_qpel%2_mc%{3}0, 3, 4, 10
+    mov          r3d, %2 * %2 / 16
     vpbroadcastw m3, [pw_16]
     mova         m4, [qpel_h01]
     mova         m5, [qpel_h23]
@@ -56,7 +56,11 @@ cglobal %1_h264_qpel16_mc%{2}0, 3, 4, 10
     mova         m9, [qpel_c45]
 .loop:
     movu         xm0, [r1-2]
+%if %2 == 16
     vinserti128  m0, m0, [r1+6], 1
+%else
+    vinserti128  m0, m0, [r1+r2-2], 1
+%endif
     pshufb       m1, m0, m4
     pshufb       m2, m0, m5
     pmaddubsw    m1, m7
@@ -68,10 +72,11 @@ cglobal %1_h264_qpel16_mc%{2}0, 3, 4, 10
     paddw        m1, m3
     psraw        m1, 5
     vextracti128 xm2, m1, 1
+%if %2 == 16
     packuswb     xm1, xm2
-%if %2 == 1
+%if %3 == 1
     pavgb        xm1, [r1]
-%elif %2 == 3
+%elif %3 == 3
     pavgb        xm1, [r1+1]
 %endif
 %ifidn %1, avg
@@ -80,17 +85,40 @@ cglobal %1_h264_qpel16_mc%{2}0, 3, 4, 10
     movu         [r0], xm1
     add          r0, r2
     add          r1, r2
+%else
+    packuswb     xm1, xm2
+%if %3 != 2
+    movq         xm0, [r1+(%3 >> 1)]
+    movhps       xm0, [r1+r2+(%3 >> 1)]
+    pavgb        xm1, xm0
+%endif
+%ifidn %1, avg
+    movq         xm0, [r0]
+    movhps       xm0, [r0+r2]
+    pavgb        xm1, xm0
+%endif
+    movq         [r0], xm1
+    movhps       [r0+r2], xm1
+    lea          r0, [r0+r2*2]
+    lea          r1, [r1+r2*2]
+%endif
     dec          r3d
     jnz .loop
     RET
 %endmacro
 
-QPEL16_H_AVX2 put, 1
-QPEL16_H_AVX2 put, 2
-QPEL16_H_AVX2 put, 3
-QPEL16_H_AVX2 avg, 1
-QPEL16_H_AVX2 avg, 2
-QPEL16_H_AVX2 avg, 3
+QPEL_H_AVX2 put, 16, 1
+QPEL_H_AVX2 put, 16, 2
+QPEL_H_AVX2 put, 16, 3
+QPEL_H_AVX2 avg, 16, 1
+QPEL_H_AVX2 avg, 16, 2
+QPEL_H_AVX2 avg, 16, 3
+QPEL_H_AVX2 put, 8, 1
+QPEL_H_AVX2 put, 8, 2
+QPEL_H_AVX2 put, 8, 3
+QPEL_H_AVX2 avg, 8, 1
+QPEL_H_AVX2 avg, 8, 2
+QPEL_H_AVX2 avg, 8, 3
 %endif
 
 ; Full-width 8-bit vertical interpolation, with quarter-pel averaging fused.

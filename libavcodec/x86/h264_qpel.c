@@ -39,14 +39,21 @@ DECLARE_QPEL16_V_AVX2(avg, 1)
 DECLARE_QPEL16_V_AVX2(avg, 2)
 DECLARE_QPEL16_V_AVX2(avg, 3)
 
-#define DECLARE_QPEL16_H_AVX2(op, pos) \
-void ff_##op##_h264_qpel16_mc##pos##0_avx2(uint8_t *dst, const uint8_t *src, ptrdiff_t stride);
-DECLARE_QPEL16_H_AVX2(put, 1)
-DECLARE_QPEL16_H_AVX2(put, 2)
-DECLARE_QPEL16_H_AVX2(put, 3)
-DECLARE_QPEL16_H_AVX2(avg, 1)
-DECLARE_QPEL16_H_AVX2(avg, 2)
-DECLARE_QPEL16_H_AVX2(avg, 3)
+#define DECLARE_QPEL_H_AVX2(op, size, pos) \
+void ff_##op##_h264_qpel##size##_mc##pos##0_avx2(uint8_t *dst, const uint8_t *src, ptrdiff_t stride);
+DECLARE_QPEL_H_AVX2(put, 16, 1)
+DECLARE_QPEL_H_AVX2(put, 16, 2)
+DECLARE_QPEL_H_AVX2(put, 16, 3)
+DECLARE_QPEL_H_AVX2(avg, 16, 1)
+DECLARE_QPEL_H_AVX2(avg, 16, 2)
+DECLARE_QPEL_H_AVX2(avg, 16, 3)
+
+DECLARE_QPEL_H_AVX2(put, 8, 1)
+DECLARE_QPEL_H_AVX2(put, 8, 2)
+DECLARE_QPEL_H_AVX2(put, 8, 3)
+DECLARE_QPEL_H_AVX2(avg, 8, 1)
+DECLARE_QPEL_H_AVX2(avg, 8, 2)
+DECLARE_QPEL_H_AVX2(avg, 8, 3)
 
 #define DECLARE_QPEL_HV_AVX2(op, size, x, y) \
 void ff_##op##_h264_qpel##size##_mc##x##y##_avx2(uint8_t *dst, const uint8_t *src, ptrdiff_t stride);
@@ -500,6 +507,12 @@ av_cold void ff_h264qpel_init_x86(H264QpelContext *c, int bit_depth)
         c->avg_h264_qpel_pixels_tab[1][7] = ff_avg_h264_qpel8_mc31_avx2;
         c->avg_h264_qpel_pixels_tab[1][13] = ff_avg_h264_qpel8_mc13_avx2;
         c->avg_h264_qpel_pixels_tab[1][15] = ff_avg_h264_qpel8_mc33_avx2;
+        c->put_h264_qpel_pixels_tab[1][1] = ff_put_h264_qpel8_mc10_avx2;
+        c->put_h264_qpel_pixels_tab[1][2] = ff_put_h264_qpel8_mc20_avx2;
+        c->put_h264_qpel_pixels_tab[1][3] = ff_put_h264_qpel8_mc30_avx2;
+        c->avg_h264_qpel_pixels_tab[1][1] = ff_avg_h264_qpel8_mc10_avx2;
+        c->avg_h264_qpel_pixels_tab[1][2] = ff_avg_h264_qpel8_mc20_avx2;
+        c->avg_h264_qpel_pixels_tab[1][3] = ff_avg_h264_qpel8_mc30_avx2;
         c->put_h264_qpel_pixels_tab[0][1] = ff_put_h264_qpel16_mc10_avx2;
         c->put_h264_qpel_pixels_tab[0][2] = ff_put_h264_qpel16_mc20_avx2;
         c->put_h264_qpel_pixels_tab[0][3] = ff_put_h264_qpel16_mc30_avx2;
