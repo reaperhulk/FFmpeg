@@ -628,6 +628,129 @@ static void check_biweight(void)
 }
 #endif
 
+/* Independent boundary-strength reference for the SIMD cache contract.
+ * Differences use the same wrapped 16-bit motion-vector representation. */
+static int strength_mv_bad(const int16_t a[2], const int16_t b[2], int field)
+{
+    int dx = (int16_t)((uint16_t)a[0] - (uint16_t)b[0]);
+    int dy = (int16_t)((uint16_t)a[1] - (uint16_t)b[1]);
+    int lim = field ? 1 : 3;
+    return (unsigned)(dx + 3) > 6 || (unsigned)(dy + lim) > 2 * lim;
+}
+
+static int strength_motion(int8_t ref[2][40], int16_t mv[2][40][2],
+                           int a, int b, int bidir, int field)
+{
+    int normal = ref[0][a] != ref[0][b] ||
+                 strength_mv_bad(mv[0][a], mv[0][b], field);
+    if (bidir) {
+        int cross = ref[0][a] != ref[1][b] || ref[1][a] != ref[0][b] ||
+                    strength_mv_bad(mv[0][a], mv[1][b], field) ||
+                    strength_mv_bad(mv[1][a], mv[0][b], field);
+        normal |= ref[1][a] != ref[1][b] ||
+                  strength_mv_bad(mv[1][a], mv[1][b], field);
+        normal &= cross;
+    }
+    return normal;
+}
+
+static void strength_reference(int16_t bs[2][4][4], uint8_t nnz[40],
+                               int8_t ref[2][40], int16_t mv[2][40][2],
+                               int bidir, int edges, int step,
+                               int mask0, int mask1, int field)
+{
+    int motion[4];
+    for (int edge = 0; edge < edges; edge += step)
+        for (int i = 0; i < 4; i++) {
+            int a = 12 + 8 * edge + i;
+            int v = !(edge & mask1) && strength_motion(ref, mv, a, a - 8, bidir, field);
+            bs[1][edge][i] = nnz[a] || nnz[a - 8] ? 2 : v;
+        }
+    for (int row = 0; row < 4; row++)
+        for (int i = 0; i < 4; i++) {
+            int a = 12 + 8 * row + i;
+            if (!(row & mask0))
+                motion[i] = strength_motion(ref, mv, a, a - 1, bidir, field);
+            bs[0][i][row] = nnz[a] || nnz[a - 1] ? 2 : motion[i];
+        }
+}
+
+static void check_loop_filter_strength(void)
+{
+    LOCAL_ALIGNED_16(int16_t, bs0, [2], [4][4]);
+    LOCAL_ALIGNED_16(int16_t, bs1, [2], [4][4]);
+    LOCAL_ALIGNED_16(int16_t, expected, [2], [4][4]);
+    /* Some SIMD kernels load full vectors for four useful cache entries. */
+    LOCAL_ALIGNED_32(uint8_t, nnz, [80]);
+    LOCAL_ALIGNED_32(int8_t, refs, [112]);
+    LOCAL_ALIGNED_32(int16_t, mvbuf, [88], [2]);
+    int8_t (*ref)[40] = (int8_t (*)[40])refs;
+    int16_t (*mv)[40][2] = (int16_t (*)[40][2])mvbuf;
+    H264DSPContext h;
+    declare_func_emms(AV_CPU_FLAG_MMX, void, int16_t bs[2][4][4], uint8_t nnz[40],
+                      int8_t ref[2][40], int16_t mv[2][40][2],
+                      int bidir, int edges, int step, int mask0, int mask1, int field);
+    memset(mvbuf, 0, 88 * sizeof(*mvbuf));
+    ff_h264dsp_init(&h, 8, 1);
+    for (int bidir = 0; bidir <= 1; bidir++) {
+        for (int field = 0; field <= 1; field++) {
+            if (check_func(h.loop_filter_strength, "loop_filter_strength_bidir%d_field%d", bidir, field)) {
+                for (int test = 0; test < 64; test++) {
+                    for (int i = 0; i < 80; i++)
+                        nnz[i] = test % 8 == 0 ? rnd() % 17 : 0;
+                    for (int i = 0; i < 112; i++)
+                        refs[i] = test % 8 == 1 ? (rnd() % 4) - 1 : 0;
+                    for (int list = 0; list < 2; list++)
+                        for (int i = 0; i < 40; i++)
+                            for (int xy = 0; xy < 2; xy++)
+                                mv[list][i][xy] = test % 8 == 2 ? rnd() : (int)(rnd() % 9) - 4;
+                    /* Exercise matching normal and crossed B-list pairings,
+                     * as well as differences on either side of the limits. */
+                    if (test % 8 >= 4) {
+                        for (int list = 0; list < 2; list++) {
+                            for (int i = 0; i < 40; i++) {
+                                int parity = (i + i / 8) & 1;
+                                ref[list][i] = test % 8 == 6 ? list ^ parity : 0;
+                                for (int xy = 0; xy < 2; xy++) {
+                                    int v = 0;
+                                    if (test % 8 == 5 || test % 8 == 6)
+                                        v = 64 * (list ^ parity);
+                                    if (test % 8 == 7)
+                                        v = parity * (test / 8 - 4);
+                                    mv[list][i][xy] = v;
+                                }
+                            }
+                        }
+                    }
+                    for (int edges = 1; edges <= 4; edges += 3)
+                        for (int step = 1; step <= 2; step++)
+                            for (int mask0 = 0; mask0 <= 3; mask0 += 3)
+                                for (int mask1 = 0; mask1 <= 3; mask1++) {
+                                    memset(bs0, 0x42, sizeof(*bs0) * 2);
+                                    memcpy(bs1, bs0, sizeof(*bs0) * 2);
+                                    memcpy(expected, bs0, sizeof(*bs0) * 2);
+                                    strength_reference(expected, nnz, ref, mv, bidir, edges, step, mask0, mask1, field);
+                                    call_ref(bs0, nnz, ref, mv, bidir, edges, step, mask0, mask1, field);
+                                    call_new(bs1, nnz, ref, mv, bidir, edges, step, mask0, mask1, field);
+                                    /* Implementations may also calculate unused edges. */
+                                    for (int edge = 0; edge < 4; edge++) {
+                                        if (edge >= edges || edge % step) {
+                                            memset(bs0[1][edge], 0, sizeof(bs0[1][edge]));
+                                            memset(bs1[1][edge], 0, sizeof(bs1[1][edge]));
+                                            memset(expected[1][edge], 0, sizeof(expected[1][edge]));
+                                        }
+                                    }
+                                    if (memcmp(bs0, bs1, sizeof(*bs0) * 2) ||
+                                        memcmp(expected, bs1, sizeof(*bs0) * 2))
+                                        fail();
+                                }
+                }
+                bench_new(bs1, nnz, ref, mv, bidir, 4, 1, 0, 0, field);
+            }
+        }
+    }
+}
+
 void checkasm_check_h264dsp(void)
 {
     check_idct();
@@ -637,6 +760,8 @@ void checkasm_check_h264dsp(void)
 
     check_loop_filter();
     report("loop_filter");
+    check_loop_filter_strength();
+    report("loop_filter_strength");
 
     check_loop_filter_intra();
     report("loop_filter_intra");

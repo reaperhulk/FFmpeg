@@ -87,6 +87,11 @@ void ff_h264_loop_filter_strength_mmxext(int16_t bS[2][4][4], uint8_t nnz[40],
                                          int16_t mv[2][40][2],
                                          int bidir, int edges, int step,
                                          int mask_mv0, int mask_mv1, int field);
+void ff_h264_loop_filter_strength_avx(int16_t bS[2][4][4], uint8_t nnz[40],
+                                         int8_t ref[2][40],
+                                         int16_t mv[2][40][2],
+                                         int bidir, int edges, int step,
+                                         int mask_mv0, int mask_mv1, int field);
 
 #define LF_FUNC(DIR, TYPE, DEPTH, OPT)                                        \
 void ff_deblock_ ## DIR ## _ ## TYPE ## _ ## DEPTH ## _ ## OPT(uint8_t *pix,  \
@@ -206,6 +211,10 @@ av_cold void ff_h264dsp_init_x86(H264DSPContext *c, const int bit_depth,
 
     if (EXTERNAL_MMXEXT(cpu_flags) && chroma_format_idc <= 1)
         c->loop_filter_strength = ff_h264_loop_filter_strength_mmxext;
+#if ARCH_X86_64
+    if (EXTERNAL_AVX_FAST(cpu_flags) && chroma_format_idc <= 1)
+        c->loop_filter_strength = ff_h264_loop_filter_strength_avx;
+#endif
 
     if (bit_depth == 8) {
         if (EXTERNAL_MMX(cpu_flags)) {

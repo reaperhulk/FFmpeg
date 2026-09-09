@@ -1140,3 +1140,118 @@ cglobal h264_loop_filter_strength, 9, 9, 0, bs, nnz, ref, mv, bidir, edges, \
     mova  [bsq+mmsize*2], m2
     mova  [bsq+mmsize*3], m3
     RET
+
+%if ARCH_X86_64
+; Four motion vectors fit in one XMM register. Compare the two reference
+; pairings in parallel within each register before reducing to four bS bytes.
+%macro LF_STRENGTH_AVX_ITER 7 ; end, step, mask, dir, delta, reset, bidir
+    xor             r4d, r4d
+%%loop:
+%if %6
+    pxor             m0, m0
+%endif
+    test            r4d, %3
+    jnz          %%nnz
+%if %7
+    movd             m0, [r2+r4+12]
+    pshufd           m0, m0, 0
+    movd             m1, [r2+r4+52]
+    pshufd           m1, m1, 0
+    movd             m2, [r2+r4+12+%5]
+    movd             m3, [r2+r4+52+%5]
+    punpckldq        m2, m2, m3
+    pshufd           m3, m2, 0xb1
+    psubb            m0, m0, m2
+    psubb            m1, m1, m3
+    por              m0, m0, m1
+
+    movu             m1, [r3+r4*4+(12+%5)*4]
+    psubw            m2, m1, [r3+r4*4+12*4]
+    psubw            m1, m1, [r3+r4*4+52*4]
+    packsswb         m2, m2, m1
+    paddb            m2, m2, m6
+    psubusb          m2, m2, m5
+    packsswb         m2, m2, m2
+    por              m0, m0, m2
+
+    movu             m1, [r3+r4*4+(52+%5)*4]
+    psubw            m2, m1, [r3+r4*4+52*4]
+    psubw            m1, m1, [r3+r4*4+12*4]
+    packsswb         m2, m2, m1
+    paddb            m2, m2, m6
+    psubusb          m2, m2, m5
+    packsswb         m2, m2, m2
+    por              m0, m0, m2
+    psrldq           m1, m0, 4
+    pminub           m0, m0, m1
+%else
+    movd             m0, [r2+r4+12]
+    movd             m1, [r2+r4+12+%5]
+    psubb            m0, m0, m1
+    movu             m1, [r3+r4*4+12*4]
+    psubw            m1, m1, [r3+r4*4+(12+%5)*4]
+    packsswb         m1, m1, m1
+    paddb            m1, m1, m6
+    psubusb          m1, m1, m5
+    packsswb         m1, m1, m1
+    por              m0, m0, m1
+%endif
+%%nnz:
+    movd             m1, [r1+r4+12]
+    movd             m2, [r1+r4+12+%5]
+    por              m1, m1, m2
+    pminub           m1, m1, m7
+    pminub           m0, m0, m7
+    psllw            m1, m1, 1
+    pmaxub           m1, m1, m0
+    pxor             m2, m2
+    punpcklbw        m1, m1, m2
+    movq [r0+r4+32*%4], m1
+    add             r4d, %2
+    cmp             r4d, %1
+    jl            %%loop
+%endmacro
+
+; Clear argument aliases left by the MMX iteration macro.
+%undef edgesd
+%undef stepd
+%undef mask_mvd
+%undef dir
+%undef d_idx
+%undef mask_dir
+%undef bidir
+INIT_XMM avx
+cglobal h264_loop_filter_strength, 9, 9, 8, bsx, nnzx, refx, mvx, bidirx, edgesx, stepx, mask0x, mask1x, fieldx
+    mova             m7, [pb_1]
+    mova             m6, [pb_3]
+    cmp    dword fieldxm, 0
+    je          .frame
+    movq             m6, [pb_3_1]
+    punpcklqdq       m6, m6, m6
+.frame:
+    paddb            m5, m6, m6
+    shl             r5d, 3
+    shl             r6d, 3
+    shl             r7d, 3
+    shl             r8d, 3
+    test            r4d, r4d
+    jnz          .bidir
+    LF_STRENGTH_AVX_ITER r5d, r6d, r8d, 1, -8, 1, 0
+    LF_STRENGTH_AVX_ITER 32, 8, r7d, 0, -1, 0, 0
+    jmp          .transpose
+.bidir:
+    LF_STRENGTH_AVX_ITER r5d, r6d, r8d, 1, -8, 1, 1
+    LF_STRENGTH_AVX_ITER 32, 8, r7d, 0, -1, 0, 1
+.transpose:
+    movq             m0, [r0]
+    movq             m1, [r0+8]
+    movq             m2, [r0+16]
+    movq             m3, [r0+24]
+    punpcklwd        m0, m0, m1
+    punpcklwd        m2, m2, m3
+    punpckldq        m1, m0, m2
+    punpckhdq        m0, m0, m2
+    movu           [r0], m1
+    movu        [r0+16], m0
+    RET
+%endif
