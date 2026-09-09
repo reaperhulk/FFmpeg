@@ -127,7 +127,7 @@ int main(void)
     AVLFG rng;
     ff_h264dsp_init(&dsp, 8, 1);
 #if ARCH_X86_64 && HAVE_X86ASM
-    if ((av_get_cpu_flags() & AV_CPU_FLAG_BMI2) && (!dsp.decode_residual || !dsp.decode_mvd_pair)) {
+    if ((av_get_cpu_flags() & AV_CPU_FLAG_BMI2) && (!dsp.decode_residual || !dsp.decode_mvd_pair || !dsp.decode_cbp)) {
         fprintf(stderr, "H.264 CABAC BMI2 dispatch was not installed\n");
         return 1;
     }
@@ -142,7 +142,7 @@ int main(void)
             if (depth == 8 && chroma == 1)
                 continue;
             ff_h264dsp_init(&other, depth, chroma);
-            if (other.decode_residual || other.decode_mvd_pair) {
+            if (other.decode_residual || other.decode_mvd_pair || other.decode_cbp) {
                 fprintf(stderr, "Unexpected CABAC dispatch for depth %d chroma %d\n",
                         depth, chroma);
                 return 1;
@@ -256,6 +256,41 @@ int main(void)
             return 1;
         }
     }
-    fprintf(stderr, "195840 bins, 20000 residuals, 20000 MVDs passed\n");
+    for (int test = 0; test < 20000; test++) {
+        CABACContext ref, opt;
+        uint8_t state0[12], state1[12];
+        int left = av_lfg_get(&rng) & 2047, top = av_lfg_get(&rng) & 2047;
+        int cbp = 0, ctx, chroma = 0;
+        for (int i = 0; i < sizeof(data); i++)
+            data[i] = test % 4 == 0 ? 0 : test % 4 == 1 ? 255 : av_lfg_get(&rng);
+        data[0] &= 127;
+        for (int i = 0; i < 12; i++)
+            state0[i] = state1[i] = av_lfg_get(&rng) & 127;
+        if (ff_init_cabac_decoder(&ref, data, sizeof(data)) < 0)
+            return 1;
+        opt = ref;
+        ctx = !(left & 2) + 2 * !(top & 4);
+        cbp = reference_bin(&ref, state0 + ctx);
+        ctx = !(cbp & 1) + 2 * !(top & 8);
+        cbp |= reference_bin(&ref, state0 + ctx) << 1;
+        ctx = !(left & 8) + 2 * !(cbp & 1);
+        cbp |= reference_bin(&ref, state0 + ctx) << 2;
+        ctx = !(cbp & 4) + 2 * !(cbp & 2);
+        cbp |= reference_bin(&ref, state0 + ctx) << 3;
+        ctx = ((left >> 4 & 3) > 0) + 2 * ((top >> 4 & 3) > 0);
+        if (reference_bin(&ref, state0 + 4 + ctx)) {
+            ctx = 4 + ((left >> 4 & 3) == 2) + 2 * ((top >> 4 & 3) == 2);
+            chroma = 1 + reference_bin(&ref, state0 + 4 + ctx);
+        }
+        cbp |= chroma << 4;
+        if (dsp.decode_cbp(&opt, state1, left, top) != cbp ||
+            memcmp(state0, state1, sizeof(state0)) ||
+            ref.low != opt.low || ref.range != opt.range ||
+            ref.bytestream != opt.bytestream) {
+            fprintf(stderr, "CBP mismatch on case %d\n", test);
+            return 1;
+        }
+    }
+    fprintf(stderr, "195840 bins, 20000 residuals, 20000 MVDs, and 20000 CBPs passed\n");
     return 0;
 }

@@ -117,7 +117,8 @@ typedef struct H264DSPContext {
      * out any bytes that form the trailing_zero_8bits syntax element too.
      */
     int (*startcode_find_candidate)(const uint8_t *buf, int size);
-    /* Optional fused CABAC decoder for non-DC, 8-bit residual blocks. */
+    /* Optional fused CABAC kernels for 8-bit 4:2:0. */
+    int (*decode_cbp)(struct CABACContext *c, uint8_t *state, int left, int top);
     /* out = { x, y, min(abs(x),70), min(abs(y),70) }; -1 on overflow. */
     int (*decode_mvd_pair)(struct CABACContext *c, uint8_t *state,
                            int amvd_x, int amvd_y, int out[4]);

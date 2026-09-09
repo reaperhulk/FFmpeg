@@ -2359,9 +2359,14 @@ decode_intra_mb:
    }
 
     if( !IS_INTRA16x16( mb_type ) ) {
-        cbp  = decode_cabac_mb_cbp_luma(sl);
-        if(decode_chroma)
-            cbp |= decode_cabac_mb_cbp_chroma(sl) << 4;
+        if (h->h264dsp.decode_cbp) {
+            cbp = h->h264dsp.decode_cbp(&sl->cabac, sl->cabac_state + 73,
+                                        sl->left_cbp, sl->top_cbp);
+        } else {
+            cbp = decode_cabac_mb_cbp_luma(sl);
+            if (decode_chroma)
+                cbp |= decode_cabac_mb_cbp_chroma(sl) << 4;
+        }
     } else {
         if (!decode_chroma && cbp>15) {
             av_log(h->avctx, AV_LOG_ERROR, "gray chroma\n");

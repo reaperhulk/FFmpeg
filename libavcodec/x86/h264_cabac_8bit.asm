@@ -9,7 +9,7 @@ cextern h264_cabac_tables
 %if ARCH_X86_64
 
 ; Live state: r0d=low, r5d=range, r7=bytestream, r8=tables.
-; r6+r13 addresses the probability state. r9 returns the decoded bit in bit 0.
+; r6 plus the macro argument (default r13) addresses the probability state. r9 returns the decoded bit in bit 0.
 ; Clobbers r9-r11. H.264's caller provides padded, unchecked CABAC input.
 %macro RESIDUAL_GET_CABAC 0-1 r13
     movzx       r9d, byte [r6+%1]
@@ -208,6 +208,7 @@ cglobal h264_decode_residual_8, 9, 15, 0, 320
     mov         [r4+16], r7
     mov         eax, [rsp+48]
     RET
+
 ; Decode horizontal and vertical MVDs while keeping CABAC state live.
 ; Arguments: CABACContext*, states at offset 40, amvd_x, amvd_y, out[4].
 ; Output is { mvd_x, mvd_y, abs_x_clipped_to_70, abs_y_clipped_to_70 }.
@@ -289,4 +290,85 @@ cglobal h264_decode_mvd_pair, 5, 12, 0, 16
     neg         eax
     RET
 
+; Decode the four luma and one/two chroma coded-block-pattern bins.
+INIT_XMM bmi2
+cglobal h264_decode_cbp, 4, 13, 0, 16
+    mov         [rsp], r0
+    mov         r6, r1
+    mov         r5d, [r0+4]
+    mov         r7, [r0+16]
+    mov         r0d, [r0]
+    lea         r8, [h264_cabac_tables]
+    mov         r4d, r2d
+    shr         r4d, 1
+    and         r4d, 1
+    mov         r12d, r3d
+    shr         r12d, 1
+    and         r12d, 2
+    or          r4d, r12d
+    xor         r4d, 3
+    RESIDUAL_GET_CABAC r4
+    mov         r12d, r9d
+    and         r12d, 1
+    mov         r4d, r3d
+    shr         r4d, 2
+    and         r4d, 2
+    or          r4d, r12d
+    xor         r4d, 3
+    RESIDUAL_GET_CABAC r4
+    and         r9d, 1
+    lea         r12d, [r12+r9*2]
+    mov         r4d, r2d
+    shr         r4d, 3
+    and         r4d, 1
+    lea         r1d, [r12*2]
+    and         r1d, 2
+    or          r4d, r1d
+    xor         r4d, 3
+    RESIDUAL_GET_CABAC r4
+    and         r9d, 1
+    lea         r12d, [r12+r9*4]
+    mov         r4d, r12d
+    shr         r4d, 2
+    and         r4d, 1
+    mov         r1d, r12d
+    and         r1d, 2
+    or          r4d, r1d
+    xor         r4d, 3
+    RESIDUAL_GET_CABAC r4
+    and         r9d, 1
+    lea         r12d, [r12+r9*8]
+    add         r6, 4
+    shr         r2d, 4
+    and         r2d, 3
+    shr         r3d, 4
+    and         r3d, 3
+    xor         r4d, r4d
+    test        r2d, r2d
+    setnz       r4b
+    xor         r1d, r1d
+    test        r3d, r3d
+    setnz       r1b
+    lea         r4d, [r4+r1*2]
+    RESIDUAL_GET_CABAC r4
+    test        r9d, 1
+    jz          .done
+    xor         r4d, r4d
+    cmp         r2d, 2
+    sete        r4b
+    xor         r1d, r1d
+    cmp         r3d, 2
+    sete        r1b
+    lea         r4d, [r4+r1*2+4]
+    RESIDUAL_GET_CABAC r4
+    and         r9d, 1
+    shl         r9d, 4
+    lea         r12d, [r12+r9+16]
+.done:
+    mov         r1, [rsp]
+    mov         [r1], r0d
+    mov         [r1+4], r5d
+    mov         [r1+16], r7
+    mov         eax, r12d
+    RET
 %endif
