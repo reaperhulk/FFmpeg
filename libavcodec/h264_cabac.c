@@ -1665,6 +1665,19 @@ decode_cabac_residual_internal(const H264Context *h, H264SliceContext *sl,
     abs_level_m1_ctx_base = sl->cabac_state
         + coeff_abs_level_m1_offset[cat];
 
+    if (!is_dc && !h->pixel_shift && h->h264dsp.decode_residual) {
+        coeff_count = h->h264dsp.decode_residual(CC, block, scantable, qmul,
+                                                significant_coeff_ctx_base,
+                                                last_coeff_ctx_base,
+                                                abs_level_m1_ctx_base, max_coeff,
+                                                significant_coeff_flag_offset_8x8[MB_FIELD(sl)]);
+        if (max_coeff == 64)
+            fill_rectangle(&sl->non_zero_count_cache[scan8[n]], 2, 2, 8, coeff_count, 1);
+        else
+            sl->non_zero_count_cache[scan8[n]] = coeff_count;
+        goto out;
+    }
+
     if( !is_dc && max_coeff == 64 ) {
 #define DECODE_SIGNIFICANCE( coefs, sig_off, last_off ) \
         for(last= 0; last < coefs; last++) { \
@@ -1767,6 +1780,8 @@ decode_cabac_residual_internal(const H264Context *h, H264SliceContext *sl,
     } else {
         STORE_BLOCK(int16_t)
     }
+out:
+    ;
 #ifdef CABAC_ON_STACK
             sl->cabac.range     = cc.range     ;
             sl->cabac.low       = cc.low       ;
