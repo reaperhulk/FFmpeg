@@ -36,13 +36,25 @@ def main():
     annotated = subprocess.check_output(
         ["perl", str(args.annotate), "--auto=no", "--show=Ir",
          "--show-percs=no", "--threshold=100", str(args.profile)], text=True)
-    costs = Counter()
+    # With debug information, annotate splits one function across source
+    # files and can omit the object name on subsequent rows. Resolve ownership
+    # in a first pass: those rows may precede the explicitly named object.
+    rows = []
+    owners = {}
     for line in annotated.splitlines():
-        match = re.match(r"^\s*([\d,]+)\s+\S+:(.+) \[([^]]+)\]$", line)
-        if not match:
-            continue
-        count, name, obj = match.groups()
-        if Path(obj).resolve() != executable:
+        match = re.match(r"^\s*([\d,]+)\s+\S+:(.+?)(?: \[([^]]+)\])?$", line)
+        if match:
+            count, name, obj = match.groups()
+            rows.append((count, name, obj))
+            if obj:
+                owners.setdefault(name, set()).add(Path(obj).resolve())
+    costs = Counter()
+    for count, name, obj in rows:
+        if obj:
+            if Path(obj).resolve() != executable:
+                continue
+        elif owners.get(name) != {executable}:
+            # Do not guess when the function occurs in multiple objects.
             continue
         if re.fullmatch(r"0x[0-9a-fA-F]+", name):
             index = bisect.bisect_right(addresses, int(name, 16)) - 1
