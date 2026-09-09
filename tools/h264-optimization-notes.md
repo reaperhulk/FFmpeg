@@ -40,20 +40,34 @@ implementation, not against C. These are indicative ranges from this host,
 not guarantees for other processors. New AVX2 dispatch is gated by
 `EXTERNAL_AVX2_FAST` and 8-bit depth.
 
-CABAC prototype `7856287` was reverted by `5251fa1`. It remains available
-on branch `h264-cabac-prototype`, together with its randomized correctness
-test. In isolated measurements its repeated-packet median gain was about
-1.5% on synthetic video, while Sintel regressed by about 0.6%. That did not
-justify enabling a new entropy-decoding implementation. The active branch
-retains the original CABAC decoder.
+The earlier residual-only prototype `7856287` was reverted by `5251fa1`
+after inconclusive native timings. It is now reintroduced by `bc30b26` as
+part of the measured CABAC changes below. The final branch retains the
+branchless arithmetic update, not the instruction-minimizing MPS branch.
+
+| CABAC commit | Change |
+|---|---|
+| `bc30b26` | Reintroduce fused BMI2 residual decoding |
+| `41f300b` | Inline syntax readers and residual wrappers |
+| `0561138` | Inline neighbor/cache setup and skipped-macroblock handling |
+| `b216fc3` | Decode horizontal/vertical motion-vector differences with shared register-resident CABAC state |
+| `38cbb1c` | Fuse the luma/chroma coded-block-pattern bins |
+| `eac5830` | Compute the refill position directly with BSF in H.264's x86 reader |
+| `16e2ee7` | Specialize 8-bit 4:2:0 without MBAFF and propagate constants into cache helpers |
+
+Fused assembly dispatch requires x86-64, BMI2, 8-bit depth, and chroma
+format 4:2:0. The format specialization retains field-picture handling;
+other depths, chroma formats, and MBAFF use the general path.
 
 Rejected experiments were not left enabled: two AVX-512 horizontal kernels
-(including a VBMI masked-load variant), an AVX-512 weighted-prediction
-variant, an 8-wide vertical AVX2 variant,
-branchy CABAC arithmetic, aggressive C inlining, and an extra CABAC
-normalization table/state cache. They failed to show sufficiently convincing
-additional gains or regressed some cases. AVX-512 correctness alone was not
-a reason to select it over the AVX2 implementations.
+(including a VBMI masked-load variant), AVX-512 weighted prediction, an
+8-wide vertical AVX2 variant, MPS-branch CABAC, a conditional normalization
+shortcut, a C-only bin reader, precise inline-assembly memory constraints,
+and cache-pointer restrict annotations. Several reduced instruction counts
+but lost native performance. The MPS version reached about 12.7% fewer
+CABAC instructions on Sintel yet regressed repeated-packet timing by 5–7%.
+The retained version obtains its savings mainly from fusion, inlining, and
+format specialization.
 
 ## Decoder measurements
 
@@ -68,7 +82,8 @@ time, the tool records each packet repeatedly, takes its median across
 loops, and sums those packet medians for each decoder. This is a diagnostic
 estimate; it is **not** an end-to-end elapsed-time measurement. The table
 reports the median ratio across three runs; ratios above 1 favor the branch.
-All runs were pinned to CPU 2.
+The earlier pixel-kernel runs below were pinned to CPU 2. The later CABAC
+continuation measurements are described separately and were not pinned.
 
 The qpel-only revision (`5251fa1`) measured as follows:
 
@@ -137,12 +152,71 @@ Branch-miss columns in `h264-instruction-results.csv` are Callgrind's
 simulated predictor results, not hardware measurements. See the
 [Callgrind manual](https://valgrind.org/docs/manual/cl-manual.html).
 
-The remaining profile is dominated by CABAC, C macroblock/cache handling,
-and deblocking. On Sintel, `loop_filter` alone executes 865 million
-instructions and the MMXEXT strength calculation executes 377 million.
-These are stronger leads for further work than blindly widening every
-small interpolation kernel. Their instruction counts still need native
-cycle measurements to establish the payoff of an actual implementation.
+The remaining profile still includes substantial deblocking work. On
+Sintel, `loop_filter` alone executes 865 million instructions and the
+MMXEXT strength calculation executes 377 million. These remain useful
+future targets; instruction counts alone do not establish cycle savings.
+
+## CABAC continuation: target and controls
+
+The acceptance metric is **inclusive executed instructions in
+`ff_h264_decode_mb_cabac` over an entire clip**, including syntax decoding,
+residuals, motion prediction, and macroblock/cache setup. It is not a claim
+of 10% fewer instructions in every individual arithmetic-bin reader.
+
+For the final CABAC comparison, the baseline is `5251fa1` (original CABAC,
+new qpel kernels), and the candidate is the same pixel-kernel set plus the
+CABAC changes, on `h264-cabac-instruction-investigation` at `d784bf1`.
+Both use the same minimal configuration, compiler, input packets, one
+thread, one loop, and profiling boundary. No SIMD pixel kernels are
+disabled. Initial same-binary BMI2-on/off experiments used `34db062`;
+their disabled path still includes callback-check overhead, so the final
+reported reductions use the actual original-CABAC baseline instead.
+
+| Clip | Frames | Original CABAC Ir | Retained CABAC Ir | CABAC reduction | Full decode reduction, fixed pixel kernels |
+|---|---:|---:|---:|---:|---:|
+| animation | 90 | 116,637,829 | 102,923,522 | 11.76% | 5.85% |
+| sintel | 1253 | 2,926,573,144 | 2,582,076,452 | 11.77% | 4.11% |
+| testsrc2-720p | 300 | 2,547,369,624 | 2,222,135,043 | 12.77% | 6.53% |
+
+CABAC instruction totals and all valid iteration measurements are recorded in
+`tools/h264-cabac-results.csv`. Counts are deterministic for a fixed binary,
+input, dispatch, and thread configuration. Final detailed runs also collect
+simulated cache/branch events and data-reference counts. Two invalid early
+MPS runs (a label collision and a stale binary after a build failure) were
+discarded and are excluded from the CSV. Intermediate rows are individual
+experiments, not a promise that all changes accumulated monotonically.
+
+For the full retained branch, including qpel, weighted prediction, and
+CABAC, Sintel's complete cached-decode loop falls from **8,679,272,738**
+instructions at `705286a` to **7,962,063,936** at `16e2ee7`: **8.26%** fewer.
+The CABAC-only controlled comparison is reported separately in the CSV.
+
+Native CABAC comparison uses the same qpel pixel kernels in both isolated
+libraries, alternating packet order, five loops and three runs, without
+concurrent compilation/profiling. Repeated-packet median ratios are
+**1.023322, 1.029101, 1.023759** (roughly 2.3–2.9% faster; median 2.4%).
+Total thread-CPU ratios are **0.923227, 1.037270, 0.997357**. The disagreement
+shows substantial host noise; the packet statistic is a diagnostic estimate,
+not proof of an end-to-end wall-clock gain, and these results do not establish
+a 10% native decoding speedup. No hardware retired-instruction or cycle
+counter was available. Do not substitute Callgrind runtime for native timing.
+
+To extract inclusive CABAC costs, use the matching profiler's annotate
+script (it may need to be invoked with `perl`):
+
+```sh
+perl /path/to/callgrind_annotate --auto=no --inclusive=yes \
+  --show=Ir --show-percs=no --threshold=100 decode.callgrind \
+  | rg 'PROGRAM TOTALS|ff_h264_decode_mb_cabac'
+```
+
+Add `--cache-sim=yes --branch-sim=yes` to the profiling command for data and
+simulated branch/cache statistics. `H264_BENCH_CPU_FLAGS=-bmi2` in the
+benchmark environment clears only BMI2, retaining AVX2 pixel dispatch;
+it isolates the fused callbacks but does not undo C inlining/specialization
+or the BSF change. Build the baseline revision to measure the whole CABAC
+optimization set.
 
 Build the same profiling harness against each revision's libraries:
 
@@ -234,15 +308,19 @@ The standalone qpel test makes 25,600 full-destination-buffer comparisons
 against C: five padded strides, sixteen source alignments, zero/255,
 alternating rows/columns, random pixels, both put/average operations, and
 both block sizes. The final full checkasm run passed 588 tests, including native calling
-conventions and the 9-/10-bit paths. On the separate CABAC prototype branch, `make
-fate-h264-cabac` compares 20,000 randomized residual blocks,
-including coefficient output, all context states, coefficient count, input
-position, and arithmetic low/range state. It explicitly checks that BMI2
-runtime dispatch is installed, preventing a silent C-only test pass.
-Initial prototype measurements taken before that assertion was added were
-discarded because the optimized dispatch had not been installed.
+conventions and the 9-/10-bit paths. Both `fate-cabac` and
+`fate-h264-cabac` pass on the retained branch. The H.264 test compares
+195,840 bins, 20,000 residual blocks, 20,000 motion-vector pairs, and 20,000
+coded-block patterns against an independent C arithmetic decoder. It checks
+outputs, all probability states, input position, and arithmetic low/range,
+including refill boundaries and malformed motion-vector magnitudes. It
+asserts the BMI2 callbacks are installed and absent for unsupported depth/
+chroma combinations, preventing a silent scalar-only pass.
 
 Compare candidate frame hashes with the original revision, at both one and
-four decoder threads. The three benchmark clips passed those comparisons. Weighted prediction
+four decoder threads. All four complete clips passed those comparisons after integration. Additional
+30-frame CAVLC, MBAFF, High 10, High 4:2:2, and High 4:4:4 regression clips
+match the original decoder. The BMI2-disabled animation fallback also matches.
+Weighted prediction
 also passed 100 randomized checkasm rounds, with explicit default weight
 128 and signed saturation extremes added to the existing test.
