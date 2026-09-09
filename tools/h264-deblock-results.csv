@@ -1,0 +1,7 @@
+stage,status,clip,decode_Ir,strength_Ir,loop_filter_Ir,filter_mb_fast_Ir
+before,baseline,sintel,7962063936,376893560,865512044,552821223
+avx_strength,retained,sintel,7868511017,283341980,865512044,552821223
+simple_setup,retained,sintel,7686274980,283341980,683276007,552821223
+filter_specialization,rejected,sintel,7666636300,283341980,683276007,533182543
+left_cache_with_filter_specialization,rejected,sintel,7621323975,283341980,637963682,533182543
+nnz_shortcut,rejected,sintel,7690282180,287349180,683276007,552821223

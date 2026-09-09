@@ -6,6 +6,10 @@ Baseline: `705286a8a7a8f9118465b2bd83f99a6f066dcbbc` from
 Measurements: Intel Xeon Platinum 8573C, GCC 13.3, NASM 2.16.03,
 Linux virtual machine; one decoding thread unless stated otherwise.
 
+The subsequent [deblocking follow-up](h264-deblock-notes.md) adds two
+optimizations, reaching 11.44% fewer full-decode instructions on Sintel versus
+the original revision. Its native and correctness results are reported separately.
+
 ## What the original source uses
 
 - `libavcodec/x86/h264_qpel.c` dispatches 8-bit quarter-pixel interpolation
@@ -187,7 +191,7 @@ MPS runs (a label collision and a stale binary after a build failure) were
 discarded and are excluded from the CSV. Intermediate rows are individual
 experiments, not a promise that all changes accumulated monotonically.
 
-For the full retained branch, including qpel, weighted prediction, and
+At the CABAC/weighted-prediction checkpoint, including qpel, weighted prediction, and
 CABAC, Sintel's complete cached-decode loop falls from **8,679,272,738**
 instructions at `705286a` to **7,962,063,936** at `16e2ee7`: **8.26%** fewer.
 The CABAC-only controlled comparison is reported separately in the CSV.
@@ -307,7 +311,7 @@ cc -O2 -I. -I.. ../tools/h264_qpel_validate.c \
 The standalone qpel test makes 25,600 full-destination-buffer comparisons
 against C: five padded strides, sixteen source alignments, zero/255,
 alternating rows/columns, random pixels, both put/average operations, and
-both block sizes. The final full checkasm run passed 588 tests, including native calling
+both block sizes. The CABAC/weighted-prediction checkpoint passed 588 checkasm tests, including native calling
 conventions and the 9-/10-bit paths. Both `fate-cabac` and
 `fate-h264-cabac` pass on the retained branch. The H.264 test compares
 195,840 bins, 20,000 residual blocks, 20,000 motion-vector pairs, and 20,000
