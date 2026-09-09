@@ -66,6 +66,7 @@
 av_cold void ff_h264dsp_init(H264DSPContext *c, const int bit_depth,
                              const int chroma_format_idc)
 {
+    c->decode_mvd_pair = NULL;
     c->decode_residual = NULL;
 #undef FUNC
 #define FUNC(a, depth) a ## _ ## depth ## _c

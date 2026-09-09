@@ -180,6 +180,8 @@ H264_BIWEIGHT_10_SSE(16, 10)
 H264_BIWEIGHT_10_SSE(8,  10)
 H264_BIWEIGHT_10_SSE(4,  10)
 
+int ff_h264_decode_mvd_pair_bmi2(struct CABACContext *c, uint8_t *state,
+                                int amvd_x, int amvd_y, int out[4]);
 int ff_h264_decode_residual_8_bmi2(struct CABACContext *c, int16_t *block,
                                   const uint8_t *scantable, const uint32_t *qmul,
                                   uint8_t *significant, uint8_t *last, uint8_t *level,
@@ -194,8 +196,10 @@ av_cold void ff_h264dsp_init_x86(H264DSPContext *c, const int bit_depth,
     _Static_assert(offsetof(CABACContext, low) == 0, "CABAC low offset");
     _Static_assert(offsetof(CABACContext, range) == 4, "CABAC range offset");
     _Static_assert(offsetof(CABACContext, bytestream) == 16, "CABAC input offset");
-    if (bit_depth == 8 && chroma_format_idc == 1 && (cpu_flags & AV_CPU_FLAG_BMI2))
+    if (bit_depth == 8 && chroma_format_idc == 1 && (cpu_flags & AV_CPU_FLAG_BMI2)) {
         c->decode_residual = ff_h264_decode_residual_8_bmi2;
+        c->decode_mvd_pair = ff_h264_decode_mvd_pair_bmi2;
+    }
 #endif
 
     if (EXTERNAL_MMXEXT(cpu_flags) && chroma_format_idc <= 1)

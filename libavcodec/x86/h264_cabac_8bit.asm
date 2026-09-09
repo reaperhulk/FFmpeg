@@ -11,8 +11,8 @@ cextern h264_cabac_tables
 ; Live state: r0d=low, r5d=range, r7=bytestream, r8=tables.
 ; r6+r13 addresses the probability state. r9 returns the decoded bit in bit 0.
 ; Clobbers r9-r11. H.264's caller provides padded, unchecked CABAC input.
-%macro RESIDUAL_GET_CABAC 0
-    movzx       r9d, byte [r6+r13]
+%macro RESIDUAL_GET_CABAC 0-1 r13
+    movzx       r9d, byte [r6+%1]
     mov         r10d, r5d
     and         r5d, 0xc0
     lea         r11d, [r9+r5*2]
@@ -30,7 +30,7 @@ cextern h264_cabac_tables
     shlx        r5d, r5d, r11d
     shlx        r0d, r0d, r11d
     movzx       r10d, byte [r8+r9+1152]
-    mov         [r6+r13], r10b
+    mov         [r6+%1], r10b
     test        r0w, r0w
     jnz         %%done
     movzx       r10d, word [r7]
@@ -208,4 +208,85 @@ cglobal h264_decode_residual_8, 9, 15, 0, 320
     mov         [r4+16], r7
     mov         eax, [rsp+48]
     RET
+; Decode horizontal and vertical MVDs while keeping CABAC state live.
+; Arguments: CABACContext*, states at offset 40, amvd_x, amvd_y, out[4].
+; Output is { mvd_x, mvd_y, abs_x_clipped_to_70, abs_y_clipped_to_70 }.
+%macro MVD_COMPONENT 1
+    cmp         r2d, 3
+    sbb         r4d, r4d
+    cmp         r2d, 33
+    sbb         r4d, -2
+    RESIDUAL_GET_CABAC r4
+    xor         r2d, r2d
+    xor         r11d, r11d
+    test        r9d, 1
+    jz          %%store
+    inc         r2d
+    mov         r4d, 3
+%%unary:
+    RESIDUAL_GET_CABAC r4
+    test        r9d, 1
+    jz          %%sign
+    cmp         r2d, 4
+    adc         r4d, 0
+    inc         r2d
+    cmp         r2d, 9
+    jb          %%unary
+    mov         r4d, 3
+%%prefix:
+    RESIDUAL_GET_BYPASS
+    test        r9d, r9d
+    jz          %%suffix
+    mov         r11d, 1
+    shlx        r11d, r11d, r4d
+    add         r2d, r11d
+    inc         r4d
+    cmp         r4d, 24
+    jbe         %%prefix
+    mov         r2d, 0x80000000
+    mov         dword [rsp+8], 1
+    jmp         %%store_mvd
+%%suffix:
+    dec         r4d
+    js          %%sign
+    RESIDUAL_GET_BYPASS
+    shlx        r9d, r9d, r4d
+    add         r2d, r9d
+    jmp         %%suffix
+%%sign:
+    mov         r11d, 70
+    cmp         r2d, r11d
+    cmovb       r11d, r2d
+    RESIDUAL_GET_BYPASS
+    neg         r9d
+    xor         r2d, r9d
+    sub         r2d, r9d
+%%store:
+    mov         [r3+%1+8], r11d
+%%store_mvd:
+    mov         [r3+%1], r2d
+%endmacro
+
+INIT_XMM bmi2
+cglobal h264_decode_mvd_pair, 5, 12, 0, 16
+    mov         [rsp], r3d
+    mov         dword [rsp+8], 0
+    mov         r6, r1
+    mov         r1, r0
+    mov         r3, r4
+    mov         r5d, [r0+4]
+    mov         r7, [r0+16]
+    mov         r0d, [r0]
+    lea         r8, [h264_cabac_tables]
+    MVD_COMPONENT 0
+    add         r6, 7
+    mov         r2d, [rsp]
+    MVD_COMPONENT 4
+    mov         [r1], r0d
+    mov         [r1+4], r5d
+    mov         [r1+16], r7
+    mov         eax, [rsp+8]
+    neg         eax
+    RET
+
 %endif

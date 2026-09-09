@@ -118,6 +118,9 @@ typedef struct H264DSPContext {
      */
     int (*startcode_find_candidate)(const uint8_t *buf, int size);
     /* Optional fused CABAC decoder for non-DC, 8-bit residual blocks. */
+    /* out = { x, y, min(abs(x),70), min(abs(y),70) }; -1 on overflow. */
+    int (*decode_mvd_pair)(struct CABACContext *c, uint8_t *state,
+                           int amvd_x, int amvd_y, int out[4]);
     int (*decode_residual)(struct CABACContext *c, int16_t *block,
                            const uint8_t *scantable, const uint32_t *qmul,
                            uint8_t *significant, uint8_t *last, uint8_t *level,

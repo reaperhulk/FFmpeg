@@ -1547,10 +1547,22 @@ static av_always_inline int decode_cabac_mb_mvd(H264SliceContext *sl, int ctxbas
     int amvd1 = sl->mvd_cache[list][scan8[n] - 1][1] +\
                 sl->mvd_cache[list][scan8[n] - 8][1];\
 \
-    int mxd = decode_cabac_mb_mvd(sl, 40, amvd0, &mpx);\
-    int myd = decode_cabac_mb_mvd(sl, 47, amvd1, &mpy);\
-    if (mxd == INT_MIN || myd == INT_MIN) \
-        return AVERROR_INVALIDDATA; \
+    int mxd, myd;\
+    if (h->h264dsp.decode_mvd_pair) {\
+        int values[4];\
+        if (h->h264dsp.decode_mvd_pair(&sl->cabac, sl->cabac_state + 40,\
+                                           amvd0, amvd1, values) < 0) {\
+            av_log(h->avctx, AV_LOG_ERROR, "overflow in CABAC motion vector\n");\
+            return AVERROR_INVALIDDATA;\
+        }\
+        mxd = values[0]; myd = values[1];\
+        mpx = values[2]; mpy = values[3];\
+    } else {\
+        mxd = decode_cabac_mb_mvd(sl, 40, amvd0, &mpx);\
+        myd = decode_cabac_mb_mvd(sl, 47, amvd1, &mpy);\
+        if (mxd == INT_MIN || myd == INT_MIN) \
+            return AVERROR_INVALIDDATA; \
+    }\
     mx += mxd;\
     my += myd;\
 }
