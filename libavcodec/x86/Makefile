@@ -97,7 +97,6 @@ X86ASM-OBJS-$(CONFIG_BSWAPDSP)         += x86/bswapdsp.o
 X86ASM-OBJS-$(CONFIG_H263DSP)          += x86/h263_loopfilter.o
 X86ASM-OBJS-$(CONFIG_H264CHROMA)       += x86/h264_chromamc.o           \
                                           x86/h264_chromamc_10bit.o
-X86ASM-OBJS-$(CONFIG_H264_DECODER)     += x86/h264_cabac_8bit.o
 X86ASM-OBJS-$(CONFIG_H264DSP)          += x86/h264_deblock.o            \
                                           x86/h264_deblock_10bit.o      \
                                           x86/h264_idct.o               \

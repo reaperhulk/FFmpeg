@@ -18,8 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "config_components.h"
-#include "libavcodec/cabac.h"
 #include "libavutil/attributes.h"
 #include "libavutil/cpu.h"
 #include "libavutil/x86/cpu.h"
@@ -179,23 +177,10 @@ H264_BIWEIGHT_10_SSE(16, 10)
 H264_BIWEIGHT_10_SSE(8,  10)
 H264_BIWEIGHT_10_SSE(4,  10)
 
-int ff_h264_decode_residual_8_bmi2(struct CABACContext *c, int16_t *block,
-                                  const uint8_t *scantable, const uint32_t *qmul,
-                                  uint8_t *significant, uint8_t *last, uint8_t *level,
-                                  int max_coeff, const uint8_t *sig_offsets);
-
 av_cold void ff_h264dsp_init_x86(H264DSPContext *c, const int bit_depth,
                                  const int chroma_format_idc)
 {
     int cpu_flags = av_get_cpu_flags();
-
-#if ARCH_X86_64 && CONFIG_H264_DECODER
-    _Static_assert(offsetof(CABACContext, low) == 0, "CABAC low offset");
-    _Static_assert(offsetof(CABACContext, range) == 4, "CABAC range offset");
-    _Static_assert(offsetof(CABACContext, bytestream) == 16, "CABAC input offset");
-    if (bit_depth == 8 && chroma_format_idc == 1 && (cpu_flags & AV_CPU_FLAG_BMI2))
-        c->decode_residual = ff_h264_decode_residual_8_bmi2;
-#endif
 
     if (EXTERNAL_MMXEXT(cpu_flags) && chroma_format_idc <= 1)
         c->loop_filter_strength = ff_h264_loop_filter_strength_mmxext;

@@ -1385,7 +1385,6 @@ TESTPROGS = avcodec                                                     \
 TESTPROGS-$(CONFIG_APV_DECODER)           += apv
 TESTPROGS-$(CONFIG_AV1_VAAPI_ENCODER)     += av1_levels
 TESTPROGS-$(CONFIG_CABAC)                 += cabac
-TESTPROGS-$(CONFIG_H264_DECODER)          += h264_cabac
 TESTPROGS-$(CONFIG_CELP_MATH)             += celp_math
 TESTPROGS-$(CONFIG_GOLOMB)                += golomb
 TESTPROGS-$(CONFIG_IDCTDSP)               += dct

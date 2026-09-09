@@ -39,8 +39,6 @@ typedef void (*h264_biweight_func)(uint8_t *dst, uint8_t *src,
 /**
  * Context for storing H.264 DSP functions
  */
-struct CABACContext;
-
 typedef struct H264DSPContext {
     /* weighted MC */
     h264_weight_func     weight_pixels_tab[4];
@@ -117,11 +115,6 @@ typedef struct H264DSPContext {
      * out any bytes that form the trailing_zero_8bits syntax element too.
      */
     int (*startcode_find_candidate)(const uint8_t *buf, int size);
-    /* Optional fused CABAC decoder for non-DC, 8-bit residual blocks. */
-    int (*decode_residual)(struct CABACContext *c, int16_t *block,
-                           const uint8_t *scantable, const uint32_t *qmul,
-                           uint8_t *significant, uint8_t *last, uint8_t *level,
-                           int max_coeff, const uint8_t *sig_offsets);
 } H264DSPContext;
 
 void ff_h264dsp_init(H264DSPContext *c, const int bit_depth,
