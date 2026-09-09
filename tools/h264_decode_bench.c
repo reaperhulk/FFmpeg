@@ -12,6 +12,7 @@
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 #include "libavutil/error.h"
+#include "libavutil/cpu.h"
 
 static void check(int ret)
 {
@@ -69,6 +70,12 @@ int main(int argc, char **argv)
         return 1;
     }
     av_log_set_level(AV_LOG_ERROR);
+    if (getenv("H264_BENCH_CPU_FLAGS")) {
+        unsigned flags = av_get_cpu_flags();
+        check(av_parse_cpu_caps(&flags, getenv("H264_BENCH_CPU_FLAGS")));
+        av_force_cpu_flags(flags);
+    }
+    fprintf(stderr, "CPU flags: 0x%x\n", av_get_cpu_flags());
     check(avformat_open_input(&fmt, argv[1], NULL, NULL));
     check(avformat_find_stream_info(fmt, NULL));
     stream = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
