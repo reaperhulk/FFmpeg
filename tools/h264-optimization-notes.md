@@ -8,7 +8,9 @@ Linux virtual machine; one decoding thread unless stated otherwise.
 
 The subsequent [deblocking follow-up](h264-deblock-notes.md) adds two
 optimizations, reaching 11.44% fewer full-decode instructions on Sintel versus
-the original revision. Its native and correctness results are reported separately.
+the original revision. A cumulative native comparison against that same original
+revision estimates 7.0% higher packet-median throughput on Sintel, 3.7% on animation,
+and 4.3% on synthetic 720p. Details and timing limitations are in the follow-up.
 
 ## What the original source uses
 

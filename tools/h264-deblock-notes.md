@@ -50,7 +50,7 @@ experiments with explicit stage labels.
 
 ## Native timing
 
-The Linux `dlmopen` harness alternates baseline/candidate order for every
+The Linux `dlopen`/`RTLD_DEEPBIND` harness alternates baseline/candidate order for every
 packet, performs nine decode loops per run and three runs per clip, and uses
 thread CPU time. No compilation or profiling runs concurrently with these
 measurements. Each packet's median across loops is summed; the ratios below
@@ -75,6 +75,47 @@ not establish an equivalent end-to-end wall-clock gain. Hardware counters
 remain unavailable. Callgrind instruction reductions are distinct from
 native speedups. [All native runs](h264-deblock-native.csv) include total CPU
 time as well as packet statistics, including rejected experiments.
+
+## Cumulative native comparison against the original revision
+
+A subsequent controlled comparison uses original revision
+`705286a8a7a8f9118465b2bd83f99a6f066dcbbc` against the complete published
+`a127376fc092a0f601614cb816dc9d40cc6a1905` revision, including all retained
+pixel, CABAC, and deblocking changes. Both worktrees were clean, used identical
+minimal configure options, and were rebuilt before linking the same current
+harness source against their respective static libraries. The shared decoder
+wrappers use `-Wl,-Bsymbolic` and are loaded with `RTLD_DEEPBIND` so each calls
+its own FFmpeg implementation. Each decoder uses one thread.
+
+There are nine complete decode loops per run and three runs per clip, with
+baseline/candidate packet execution order alternating as before. No builds,
+profilers, or other benchmarks ran concurrently. Inputs are cached in memory;
+the measured region is decoder packet submission and frame retrieval.
+The prior bit-exact validation applies to these unchanged decoder sources.
+
+| Clip | Three packet-median speedup ratios | Median throughput gain | Range across runs |
+|---|---|---:|---:|
+| Sintel | 1.052040, 1.069703, 1.070295 | 6.97% | 5.20–7.03% |
+| Animation | 1.018195, 1.037310, 1.055281 | 3.73% | 1.82–5.53% |
+| Synthetic 720p | 1.046142, 1.043301, 1.035630 | 4.33% | 3.56–4.61% |
+
+These are cumulative gains against the original revision. The earlier
+2–4% figures compare only the two deblocking changes against the already
+optimized decoder. On Sintel, the cumulative instruction reduction is
+11.44%, while the corresponding cumulative packet-median throughput gain is
+about 7%. That speedup corresponds to about 6.52% less measured time.
+If average instruction cost were constant, 11.44% fewer instructions would
+imply about 12.92% higher throughput. This experiment does not establish
+constant instruction cost or identify which cycle/stall costs explain the
+remaining difference; instruction counts alone cannot do that.
+
+Total thread-CPU speedup ratios for Sintel were 1.088095, 1.064337, and
+1.133530; animation ratios were 0.998161, 1.038683, and 1.183901; synthetic
+ratios were 0.942555, 1.024289, and 1.071747. Their spread illustrates why the
+packet-median statistic and raw totals are both retained. These VM results
+are estimates rather than precise wall-clock throughput guarantees.
+[All nine raw runs](h264-cumulative-native.csv) record both revisions and
+both timing measures.
 
 ## Rejected experiments
 
